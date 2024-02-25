@@ -42,7 +42,7 @@ public:
     glm::mat4 translation;
     glm::mat4 rotation;
     float vertcount;
-    std::list<float> verticies;
+    std::vector<float> verticies;
 };
 Assimp::Importer importer;
 const aiScene LoadFileWithAssimp(const std::string& pFile, const aiScene *scen);
@@ -123,7 +123,7 @@ int main(int argc, char** argv)
     glBindVertexArray(VAO);
     glEnable(GL_DEPTH_TEST);
     
-    const aiScene scen = LoadFileWithAssimp("./models/cube_.fbx", &scen);
+    const aiScene scen = LoadFileWithAssimp("./models/cubeﬁ.fbx", &scen);
     renderObject rObj[scen.mNumMeshes];
     for(int i = 0; i < scen.mNumMeshes; ++i)
     {
@@ -140,18 +140,9 @@ int main(int argc, char** argv)
     unsigned int lastbuffer = 0;
     for(renderObject &ro:rObj)
     {
-        //float* verts = new float[ro.verticies.size()];        //landed auf dem heap |für größere Files -> klappt nicht
-        float verts[ro.verticies.size()];                       //landed auf dem stack|kleiner -> functioniert
-        while(ro.verticies.size()>0)
-        {
-            verts[ro.verticies.size()-1] = ro.verticies.front();
-            ro.verticies.pop_front();
-        }
-        glBufferSubData(GL_ARRAY_BUFFER, lastbuffer, sizeof(verts), &verts[0]); // er braucht nur die adreses vom ersten punkt weswegen verts klappt
+        glBufferSubData(GL_ARRAY_BUFFER, lastbuffer, ro.verticies.size() * sizeof(float), &ro.verticies[0]); // er braucht nur die adreses vom ersten punkt weswegen verts klappt
         //glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
-        lastbuffer += (int)(sizeof(verts));
-        //delete[] verts;
-        //verts = NULL;
+        lastbuffer += (ro.verticies.size() * sizeof(float));
     }
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     
