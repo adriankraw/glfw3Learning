@@ -79,7 +79,7 @@ int main(int argc, char** argv)
     std::cout << "Enter monitor Index: ";
     
     //scanf(" %1i", &monitorIndex);
-    monitorIndex = 1;
+    monitorIndex = 0;
     
     GLFWmonitor &monitor = **(monitors+monitorIndex);
     const GLFWvidmode *mode = glfwGetVideoMode(&monitor);
@@ -123,12 +123,14 @@ int main(int argc, char** argv)
     glBindVertexArray(VAO);
     glEnable(GL_DEPTH_TEST);
     
-    const aiScene scen = LoadFileWithAssimp("./models/cubeﬁ.fbx", &scen);
+    const aiScene scen = LoadFileWithAssimp("./models/cube.fbx", &scen);
     renderObject rObj[scen.mNumMeshes];
     for(int i = 0; i < scen.mNumMeshes; ++i)
     {
         InportMeshData( &scen, rObj[i], i);
     }
+    
+    //tesselation glu
     
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     unsigned int addedVerticies = 0;
@@ -140,7 +142,7 @@ int main(int argc, char** argv)
     unsigned int lastbuffer = 0;
     for(renderObject &ro:rObj)
     {
-        glBufferSubData(GL_ARRAY_BUFFER, lastbuffer, ro.verticies.size() * sizeof(float), &ro.verticies[0]); // er braucht nur die adreses vom ersten punkt weswegen verts klappt
+        glBufferSubData(GL_ARRAY_BUFFER, lastbuffer, ro.verticies.size() * sizeof(float), &ro.verticies[0]);
         //glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
         lastbuffer += (ro.verticies.size() * sizeof(float));
     }
@@ -209,6 +211,7 @@ const aiScene LoadFileWithAssimp(const std::string& pFile, const aiScene *scen)
     }
     return *scen;
 }
+
 void InportMeshData(const aiScene *scen,  renderObject& rObj, int& index)
 {
     rObj.id = index;
@@ -223,7 +226,7 @@ void InportMeshData(const aiScene *scen,  renderObject& rObj, int& index)
             rObj.verticies.push_back(verts.y/sizeFaktor);
             rObj.verticies.push_back(verts.z/sizeFaktor);
             
-            //std::cout << verts.x << " " << verts.y <<" "<<verts.z << " " << std::endl;
+            //verscueh das über pointer zu machen mit m alloc re alloc etc.
         }
     }
     printf("%i: meshes %i\n",index, (int)rObj.verticies.size());
