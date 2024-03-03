@@ -12,3 +12,4 @@ If you ever wanted to do what I did:
 * import fbx files ( choose assimp )
 * used glm to rotate object
 * using the depth buffer
+* removed everything besides shader + main.cpp to rebuild project from scretch
