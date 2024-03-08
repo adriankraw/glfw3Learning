@@ -16,3 +16,5 @@ glfw3Learning/glfw3Learning.xcodeproj
 .DS_Store
 glfw3Learning/.DS_Store
 glfw3Learning/glfw3Learning.xcodeproj
+build
+glfw3Learning/include

@@ -1,0 +1,4 @@
+-xc++
+-I
+/usr/local/include
+./include

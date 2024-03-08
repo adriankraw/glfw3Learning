@@ -1,10 +1,10 @@
 //opengl
 #define GL_SILENCE_DEPRECATION
 #define GLFW_INCLUDE_GLCOREARB
-#include "GLFW/glfw3.h"
-#include "glm/glm.hpp"
-#include "glm/gtc/matrix_transform.hpp"
-#include "glm/gtc/type_ptr.hpp"
+#include "../include/GLFW/glfw3.h"
+#include "../include/glm/glm.hpp"
+#include "../include/glm/gtc/matrix_transform.hpp"
+#include "../include/glm/gtc/type_ptr.hpp"
 
 //c++
 #include <iostream>
@@ -14,12 +14,13 @@
 #include <list>
 
 //assimp
-#include "assimp/Importer.hpp"
-#include "assimp/scene.h"
-#include "assimp/postprocess.h"
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 #define sizeFaktor 2
 #define FPS 15
+#define shaderpath "../"
 
 //callbacks
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
