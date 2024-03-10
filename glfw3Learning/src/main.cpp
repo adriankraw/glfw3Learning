@@ -20,7 +20,7 @@
 
 #define sizeFaktor 2
 #define FPS 15
-#define shaderpath "../"
+#define shaderpath "./"
 
 //callbacks
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -124,7 +124,7 @@ int main(int argc, char** argv)
     glBindVertexArray(VAO);
     glEnable(GL_DEPTH_TEST);
     
-    const aiScene scen = LoadFileWithAssimp("./models/cube.fbx", &scen);
+    const aiScene scen = LoadFileWithAssimp("./models/untitled.fbx", &scen);
     renderObject rObj[scen.mNumMeshes];
     for(int i = 0; i < scen.mNumMeshes; ++i)
     {
@@ -276,7 +276,7 @@ void GenerateShaderProgram(unsigned int *_shaderProgram)
     
     vertexShader = glCreateShader(GL_VERTEX_SHADER);
     
-    const char *vertexShaderSource = readFromFile("/Users/olantern/Documents/CodeProjects/OpenGLDez2023/emptyWindow/glfw3Learning/glfw3Learning/vertexShader.glsl");
+    const char *vertexShaderSource = readFromFile("./vertexShader.glsl");
     
     glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
     glCompileShader(vertexShader);
@@ -284,7 +284,7 @@ void GenerateShaderProgram(unsigned int *_shaderProgram)
     
     fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     
-    const char *fragmentShaderSource = readFromFile("/Users/olantern/Documents/CodeProjects/OpenGLDez2023/emptyWindow/glfw3Learning/glfw3Learning/fragmentShader.glsl");
+    const char *fragmentShaderSource = readFromFile("./fragmentShader.glsl");
     glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
     glCompileShader(fragmentShader);
     
@@ -303,7 +303,7 @@ void GenerateShaderProgram(unsigned int *_shaderProgram)
         std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
     }
     *_shaderProgram = glCreateProgram();
-    
+
     glAttachShader(*_shaderProgram, vertexShader);
     glAttachShader(*_shaderProgram, fragmentShader);
     glLinkProgram(*_shaderProgram);
