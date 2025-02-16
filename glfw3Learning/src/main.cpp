@@ -1,11 +1,17 @@
 //opengl
+#include "glm/ext/matrix_float4x4.hpp"
+#include "glm/ext/matrix_transform.hpp"
+#include "glm/ext/vector_float3.hpp"
+#include <cstdio>
+#include <ostream>
 #define GL_SILENCE_DEPRECATION
 #define GLFW_INCLUDE_GLCOREARB
-#include "../include/GLFW/glfw3.h"
-#include "../include/glm/glm.hpp"
-#include "../include/glm/gtc/matrix_transform.hpp"
-#include "../include/glm/gtc/type_ptr.hpp"
 
+#include <OpenGL/OpenGL.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 //c++
 #include <iostream>
 #include <fstream>
@@ -13,10 +19,17 @@
 #include <thread>
 #include <list>
 
-//assimp
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
+//FBX SDK > assimp
+#include <fbxsdk.h>
+#include <fbxsdk/fileio/fbxiosettings.h>
+#include <fbxsdk/core/fbxmanager.h>
+#include <fbxsdk/fileio/fbximporter.h>
+#include <fbxsdk/fileio/fbxiosettingspath.h>
+#include <fbxsdk/scene/fbxscene.h>
+#include <fbxsdk/scene/geometry/fbxmesh.h>
+#include "fbxsdk/scene/constraint/fbxcontrolset.h"
+#include "fbxsdk/scene/geometry/fbxnodeattribute.h"
+#include "fbxsdk/utils/fbxgeometryconverter.h"
 
 #define sizeFaktor 2
 #define FPS 15
@@ -26,6 +39,7 @@
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void error_callback(int code, const char* description);
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 //shader
 const GLchar* readFromFile(const GLchar* pathToFile);
 void GenerateShaderProgram(unsigned int *_shaderProgram);
@@ -35,7 +49,7 @@ unsigned int vertexShader,fragmentShader;
 //modification
 void glTransformArrays(glm::mat4 *trans, unsigned int *shaderProgram);
 
-//assimp
+//fbx
 class renderObject
 {
 public:
@@ -45,9 +59,24 @@ public:
     float vertcount;
     std::vector<float> verticies;
 };
-Assimp::Importer importer;
-const aiScene LoadFileWithAssimp(const std::string& pFile, const aiScene *scen);
-void InportMeshData(const aiScene *scen,  renderObject& rObj, int& index);
+
+class FbxControler
+{
+    public:
+        bool rotating = true;
+        float rotationX = 0;
+        float rotationY = 0;
+        float rotationZ = 0;
+        float zoomlevel = 1;
+};
+
+FbxScene* LoadFileWithAssimp(const char& pFile);
+void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index);
+
+//argv
+std::string ArgvTrans = "-t";
+
+FbxControler *controller = new FbxControler();
 
 int main(int argc, char** argv)
 {
@@ -61,11 +90,16 @@ int main(int argc, char** argv)
     glfwWindowHint (GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint (GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint (GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint (GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
-    glfwWindowHint (GLFW_DECORATED, GLFW_FALSE);
-    glfwWindowHint (GLFW_FLOATING, GLFW_TRUE);
-    glfwWindowHint (0x0002000D, 1); // -> GLFW_MOUSE_PASSTHROUGH
-    
+
+    //do an if argv contains -t 
+    if(argc > 1 && ArgvTrans.compare(argv[1])==0)
+    {
+        glfwWindowHint (GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
+        glfwWindowHint (GLFW_DECORATED, GLFW_FALSE);
+        glfwWindowHint (GLFW_FLOATING, GLFW_TRUE);
+        glfwWindowHint (0x0002000D, 1); // -> GLFW_MOUSE_PASSTHROUGH
+    }
+
     int count;
     GLFWmonitor **monitors = glfwGetMonitors(&count);
 
@@ -102,6 +136,7 @@ int main(int argc, char** argv)
     window = glfwCreateWindow( mode->width, mode->height, "OpenGl", NULL , NULL );
     
     glfwSetKeyCallback(window, key_callback);
+    glfwSetScrollCallback(window, scroll_callback );
     
     if (!window)
     {
@@ -124,11 +159,14 @@ int main(int argc, char** argv)
     glBindVertexArray(VAO);
     glEnable(GL_DEPTH_TEST);
     
-    const aiScene scen = LoadFileWithAssimp("./models/untitled.fbx", &scen);
-    renderObject rObj[scen.mNumMeshes];
-    for(int i = 0; i < scen.mNumMeshes; ++i)
+    const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
+    const FbxScene *scen = LoadFileWithAssimp(*fbxFileLocation);
+    // https://help.autodesk.com/view/FBX/2020/ENU/?guid=FBX_Developer_Help_getting_started_your_first_fbx_sdk_program_html
+    renderObject rObj[scen->GetRootNode()->GetChildCount()];
+
+    for(int i = 0; i < scen->GetRootNode()->GetChildCount(); ++i)
     {
-        InportMeshData( &scen, rObj[i], i);
+        ImportMeshData( *scen, rObj[i], i);
     }
     
     //tesselation glu
@@ -136,6 +174,7 @@ int main(int argc, char** argv)
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     unsigned int addedVerticies = 0;
     for(renderObject const& i:rObj)
+
     {
         addedVerticies += i.vertcount;
     }
@@ -190,47 +229,95 @@ int main(int argc, char** argv)
 
 void glTransformArrays(glm::mat4 *trans, unsigned int *shaderProgram)
 {
-    *trans = glm::rotate(*trans, glm::radians(1.0f), glm::vec3(0.0f,1.0f,0.0f));
-    *trans = glm::rotate(*trans, glm::radians(1.0f), glm::vec3(1.0f,0.0f,0.0f));
-    
+    if(controller->rotating && (controller->rotationX != 0 || controller->rotationY != 0 || controller->rotationZ != 0))
+    {
+        *trans = glm::rotate(*trans, glm::radians(1.0f), glm::vec3(controller->rotationX,controller->rotationY,controller->rotationZ));
+        controller->rotationX = 0;
+        controller->rotationY = 0;
+        controller->rotationZ = 0;
+    }
+    *trans = glm::scale(*trans, glm::vec3(controller->zoomlevel));
+    controller->zoomlevel = 1;
+
     unsigned int transformLoc = glGetUniformLocation(*shaderProgram, "transform");
     glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(*trans));
 }
 
-const aiScene LoadFileWithAssimp(const std::string& pFile, const aiScene *scen)
+FbxScene* LoadFileWithAssimp(const char& pFile)
 {
-    scen = importer.ReadFile(pFile,
-    aiProcess_CalcTangentSpace |
-    aiProcess_Triangulate |
-    aiProcess_JoinIdenticalVertices |
-    aiProcess_SortByPType
-    );
+    FbxManager* SDKManager = FbxManager::Create();
+    FbxIOSettings* ios = FbxIOSettings::Create(SDKManager, IOSROOT);
+    SDKManager->SetIOSettings(ios);
     
-    if (!scen)
+    (SDKManager->GetIOSettings())->SetBoolProp(IMP_FBX_MATERIAL, true);
+    (SDKManager->GetIOSettings())->SetBoolProp(IMP_FBX_MODEL, true);
+    (SDKManager->GetIOSettings())->SetBoolProp(IMP_FBX_VISIBILITY, true);
+    (SDKManager->GetIOSettings())->SetBoolProp(IMP_FBX_TEXTURE, true);
+    (SDKManager->GetIOSettings())->SetBoolProp(IMP_FBX_LINK, false);
+    (SDKManager->GetIOSettings())->SetBoolProp(IMP_FBX_SHAPE, false);
+    (SDKManager->GetIOSettings())->SetBoolProp(IMP_FBX_GOBO, false);
+    (SDKManager->GetIOSettings())->SetBoolProp(IMP_FBX_ANIMATION, false);
+    (SDKManager->GetIOSettings())->SetBoolProp(IMP_FBX_GLOBAL_SETTINGS, true);
+    
+    FbxImporter* lImporter = FbxImporter::Create(SDKManager, "");
+    
+
+    bool lImportStatus = lImporter->Initialize(&pFile, -1, SDKManager->GetIOSettings());
+
+    if(!lImportStatus)
     {
-        std::cout << "assimp fcked up" << std::endl;
+        printf("Call to FbxImporter::Initialize() failed. \n");
+
+        if(lImporter->GetStatus().GetCode() == FbxStatus::eInvalidFile) printf("Invalid File");
+        if(lImporter->GetStatus().GetCode() == FbxStatus::eInvalidFileVersion) printf("Invalid FileVersion");
+        if(lImporter->GetStatus().GetCode() == FbxStatus::eInsufficientMemory) printf("Insufficient Memory");
+
+        printf("Error returned: %s\n\n", lImporter->GetStatus().GetErrorString());
+        exit(-1);
     }
-    return *scen;
+    
+    FbxScene *scen = FbxScene::Create(SDKManager, "myScene");
+
+    lImporter->Import(scen);
+    lImporter->Destroy();
+    FbxGeometryConverter converter(SDKManager);
+    converter.Triangulate(scen, true, true);
+
+    return scen;
 }
 
-void InportMeshData(const aiScene *scen,  renderObject& rObj, int& index)
+void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
 {
     rObj.id = index;
-    aiMesh* mesh = scen->mMeshes[index];
-    for(int f = 0; f < mesh->mNumFaces; ++f)
+
+    FbxNode *rootNode = scen.GetRootNode();
+    //rootNode = rootNode->GetChild(index);
+    for(int c = 0; c < rootNode->GetChildCount(false); ++c)
     {
-        aiFace face = mesh->mFaces[f];
-        for(int vi = 0; vi < face.mNumIndices; ++vi)
+        FbxNode* node = rootNode->GetChild(c);
+
+        FbxMesh* mesh = node->GetMesh();
+
+        int verticiesCount = mesh->GetPolygonCount();
+        printf("controlPointsamount: %i \n", verticiesCount);
+
+        for(int p = 0; p < verticiesCount; ++p)
         {
-            aiVector3D verts = mesh->mVertices[face.mIndices[vi]];
-            rObj.verticies.push_back(verts.x/sizeFaktor);
-            rObj.verticies.push_back(verts.y/sizeFaktor);
-            rObj.verticies.push_back(verts.z/sizeFaktor);
-            
-            //verscueh das über pointer zu machen mit m alloc re alloc etc.
+            for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
+            {
+                int vertIndies = mesh->GetPolygonVertex(p, poligonvertex);
+                FbxVector4 vec = mesh->GetControlPointAt(vertIndies);
+                rObj.verticies.push_back(vec.mData[0]);
+                rObj.verticies.push_back(vec.mData[1]);
+                rObj.verticies.push_back(vec.mData[2]);
+                //open3Mod    
+                //verscueh das über pointer zu machen mit m alloc re alloc etc.
+            }
         }
     }
-    printf("%i: meshes %i\n",index, (int)rObj.verticies.size());
+
+    printf("mesh: %i has verts: %i\n",index, ((int)rObj.verticies.size())/3);
+    
     rObj.vertcount = rObj.verticies.size();
 }
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -249,6 +336,46 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     }
+    if(key == GLFW_KEY_R && action == GLFW_PRESS)
+    {
+        controller->rotating = !controller->rotating;
+    }
+    if(key == GLFW_KEY_M && action == GLFW_PRESS)
+    {
+        controller->zoomlevel -=0.1;
+    }
+    if(key == GLFW_KEY_P && action == GLFW_PRESS)
+    {
+        controller->zoomlevel +=0.1;
+    }    
+    if(key == GLFW_KEY_W && action == GLFW_REPEAT)
+    {
+        controller->rotationX = 1;
+    }
+    if(key == GLFW_KEY_S && action == GLFW_REPEAT)
+    {
+        controller->rotationX =-1;
+    }    
+    if(key == GLFW_KEY_A && action == GLFW_REPEAT)
+    {
+        controller->rotationY = 1;
+    }
+    if(key == GLFW_KEY_D && action == GLFW_REPEAT)
+    {
+        controller->rotationY = -1;
+    }    
+    if(key == GLFW_KEY_Q && action == GLFW_REPEAT)
+    {
+        controller->rotationZ = 1;
+    }
+    if(key == GLFW_KEY_E && action == GLFW_REPEAT)
+    {
+        controller->rotationZ = -1;
+    }
+}
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+{
+    controller->zoomlevel = 1+(xoffset/50);
 }
 const GLchar* readFromFile(const GLchar* pathToFile)
 {
