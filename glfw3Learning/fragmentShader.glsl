@@ -2,10 +2,39 @@
 in vec3 Color;
 
 out vec4 FragColor;
-out vec4 aColor;
+
+struct Material {
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+    float shininess;
+};
+
+uniform Material material;
+
+uniform vec3 Normal = vec3(1, 1, 1);
+uniform vec3 FragPos = vec3(1, 1 ,1 );
+
+uniform vec3 lightColor = vec3(1.0f,1.0f,1.0f);
+uniform vec3 lightPos = vec3(1.0f, 1.0f ,1.0f);
+uniform vec3 lightDir = vec3(0, 1.0f ,-1.0f );
+
+uniform vec3 viewPos;
+
 void main()
 {
-    aColor = vec4(Color.x,Color.y,Color.z,1.0f);
-    //FragColor = aColor;
-    FragColor = vec4(1.0f * gl_FragCoord.z, 0.5f * gl_FragCoord.z, 0.2f * gl_FragCoord.z, 1.0f);
+    vec3 ambient = lightColor * material.ambient;
+
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = lightColor * (diff * material.diffuse);
+
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    vec3 specular = lightColor * (spec * material.specular);
+
+    vec3 result = ambient + diffuse + specular;
+    FragColor = vec4(result, 1.0f);
 }

@@ -32,7 +32,7 @@
 #include "fbxsdk/utils/fbxgeometryconverter.h"
 
 #define sizeFaktor 2
-#define FPS 15
+#define FPS 30
 #define shaderpath "./"
 
 //callbacks
@@ -70,7 +70,7 @@ class FbxControler
         float zoomlevel = 1;
 };
 
-FbxScene* LoadFileWithAssimp(const char& pFile);
+FbxScene* LoadFbxFile(const char& pFile);
 void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index);
 
 //argv
@@ -160,7 +160,7 @@ int main(int argc, char** argv)
     glEnable(GL_DEPTH_TEST);
     
     const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
-    const FbxScene *scen = LoadFileWithAssimp(*fbxFileLocation);
+    const FbxScene *scen = LoadFbxFile(*fbxFileLocation);
     // https://help.autodesk.com/view/FBX/2020/ENU/?guid=FBX_Developer_Help_getting_started_your_first_fbx_sdk_program_html
     renderObject rObj[scen->GetRootNode()->GetChildCount()];
 
@@ -169,12 +169,9 @@ int main(int argc, char** argv)
         ImportMeshData( *scen, rObj[i], i);
     }
     
-    //tesselation glu
-    
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     unsigned int addedVerticies = 0;
     for(renderObject const& i:rObj)
-
     {
         addedVerticies += i.vertcount;
     }
@@ -191,9 +188,16 @@ int main(int argc, char** argv)
     glEnableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     GenerateShaderProgram(&shaderProgram);
+
+    glUniform3f(glGetUniformLocation(shaderProgram, "material.ambient"), 0.0f, 0.12f, 0.31f);
+    glUniform3f(glGetUniformLocation(shaderProgram, "material.diffuse"), 1.0f, 0.5f, 0.31f);
+    glUniform3f(glGetUniformLocation(shaderProgram, "material.specular"), 1.0f, 0.5f, 0.31f);
+    glUniform1f(glGetUniformLocation(shaderProgram, "material.shininess"), 0.5f);
     
     glm::mat4 trans = glm::mat4(1.0f);
-    
+    const glm::vec3 startPosi = glm::vec3(0.0f,0.0f,-1.0f);
+    trans = glm::translate(trans, startPosi); 
+
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
@@ -243,7 +247,7 @@ void glTransformArrays(glm::mat4 *trans, unsigned int *shaderProgram)
     glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(*trans));
 }
 
-FbxScene* LoadFileWithAssimp(const char& pFile)
+FbxScene* LoadFbxFile(const char& pFile)
 {
     FbxManager* SDKManager = FbxManager::Create();
     FbxIOSettings* ios = FbxIOSettings::Create(SDKManager, IOSROOT);
@@ -299,8 +303,6 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
         FbxMesh* mesh = node->GetMesh();
 
         int verticiesCount = mesh->GetPolygonCount();
-        printf("controlPointsamount: %i \n", verticiesCount);
-
         for(int p = 0; p < verticiesCount; ++p)
         {
             for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
@@ -340,37 +342,41 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     {
         controller->rotating = !controller->rotating;
     }
-    if(key == GLFW_KEY_M && action == GLFW_PRESS)
+    if(key == GLFW_KEY_M && (action == GLFW_PRESS || action == GLFW_REPEAT))
     {
-        controller->zoomlevel -=0.1;
+        controller->zoomlevel -=0.5;
     }
-    if(key == GLFW_KEY_P && action == GLFW_PRESS)
+    if(key == GLFW_KEY_P && (action == GLFW_PRESS || action == GLFW_REPEAT))
     {
-        controller->zoomlevel +=0.1;
+        controller->zoomlevel +=0.5;
     }    
-    if(key == GLFW_KEY_W && action == GLFW_REPEAT)
+    if(key == GLFW_KEY_W && (action == GLFW_PRESS || action == GLFW_REPEAT))
     {
         controller->rotationX = 1;
     }
-    if(key == GLFW_KEY_S && action == GLFW_REPEAT)
+    if(key == GLFW_KEY_S && (action == GLFW_PRESS || action == GLFW_REPEAT))
     {
         controller->rotationX =-1;
     }    
-    if(key == GLFW_KEY_A && action == GLFW_REPEAT)
+    if(key == GLFW_KEY_A && (action == GLFW_PRESS || action == GLFW_REPEAT))
     {
         controller->rotationY = 1;
     }
-    if(key == GLFW_KEY_D && action == GLFW_REPEAT)
+    if(key == GLFW_KEY_D && (action == GLFW_PRESS || action == GLFW_REPEAT))
     {
         controller->rotationY = -1;
     }    
-    if(key == GLFW_KEY_Q && action == GLFW_REPEAT)
+    if(key == GLFW_KEY_Q && (action == GLFW_PRESS || action == GLFW_REPEAT))
     {
         controller->rotationZ = 1;
     }
-    if(key == GLFW_KEY_E && action == GLFW_REPEAT)
+    if(key == GLFW_KEY_E && (action == GLFW_PRESS || action == GLFW_REPEAT))
     {
         controller->rotationZ = -1;
+    }
+    if(key == GLFW_KEY_F1 && (action == GLFW_PRESS || action == GLFW_REPEAT))
+    {
+        //would like to export thecurrent trans(form) matrix
     }
 }
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
