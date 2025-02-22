@@ -1,7 +1,9 @@
 //opengl
+#include "fbxsdk/scene/geometry/fbxlayer.h"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/ext/vector_float3.hpp"
+#include <array>
 #include <cstdio>
 #include <ostream>
 #define GL_SILENCE_DEPRECATION
@@ -54,6 +56,7 @@ class renderObject
 {
 public:
     unsigned int id;
+    fbxsdk::FbxNodeAttribute::EType nodetype = fbxsdk::FbxNodeAttribute::EType::eNull;
     glm::mat4 translation;
     glm::mat4 rotation;
     float vertcount;
@@ -163,9 +166,9 @@ int main(int argc, char** argv)
     const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
     const FbxScene *scen = LoadFbxFile(*fbxFileLocation);
     // https://help.autodesk.com/view/FBX/2020/ENU/?guid=FBX_Developer_Help_getting_started_your_first_fbx_sdk_program_html
-    renderObject rObj[scen->GetRootNode()->GetChildCount()];
+    renderObject rObj[scen->GetRootNode()->GetChildCount(true)];
 
-    for(int i = 0; i < scen->GetRootNode()->GetChildCount(); ++i)
+    for(int i = 0; i < scen->GetRootNode()->GetChildCount(true); ++i)
     {
         ImportMeshData( *scen, rObj[i], i);
     }
@@ -207,8 +210,8 @@ int main(int argc, char** argv)
         unsigned int lastvercount = 0;
         for( renderObject const& i:rObj)
         {
-            glUniform3f(glGetUniformLocation(shaderProgram, "material.ambient"), (float)i.id/8, 0.12f, 0.31f);
-            glUniform3f(glGetUniformLocation(shaderProgram, "material.diffuse"), 1.0f, 0.5f, 0.31f);
+            glUniform3f(glGetUniformLocation(shaderProgram, "material.ambient"), 0, 0.12f, 0.31f);
+            glUniform3f(glGetUniformLocation(shaderProgram, "material.diffuse"), i.diffuse.r, i.diffuse.g, i.diffuse.b);
             glUniform3f(glGetUniformLocation(shaderProgram, "material.specular"), 1.0f, 0.5f, 0.31f);
             glUniform1f(glGetUniformLocation(shaderProgram, "material.shininess"), 0.5f);
             glUniform3f(glGetUniformLocation(shaderProgram, "FragPos"), 1, 1, 1);
@@ -298,41 +301,44 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
 
     FbxNode *rootNode = scen.GetRootNode();
     //rootNode = rootNode->GetChild(index);
-    for(int c = 0; c < rootNode->GetChildCount(false); ++c)
+    FbxNode* node = rootNode->GetChild(index);
+    if(node->GetNodeAttribute()->GetAttributeType() != FbxNodeAttribute::eMesh) return;
+    rObj.nodetype = fbxsdk::FbxNodeAttribute::EType::eMesh;
+    FbxMesh* mesh = node->GetMesh();
+    for (int m = 0; m < mesh->GetElementMaterialCount();++m)
     {
-        FbxNode* node = rootNode->GetChild(c);
-
-        FbxMesh* mesh = node->GetMesh();
-        for (int m = 0; m < node->GetMaterialCount();++m)
+        FbxGeometryElementMaterial* lMaterialElement = mesh->GetElementMaterial(m);
+        if( lMaterialElement->GetMappingMode() == fbxsdk::FbxLayerElement::EMappingMode::eByPolygon)
         {
-            FbxSurfaceMaterial* mat = node->GetMaterial(m);
-            std::cout<< "mat Name: " <<mat->GetName() << std::endl;
-            FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(mat->FindProperty(FbxSurfaceMaterial::sDiffuse));
-            
+            std::cout << "\nnode: " << node->GetName() << std::endl;
+            std::cout << "polygonCount: " << mesh->GetPolygonCount() << std::endl;
+
+            FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialElement->GetIndexArray().GetAt(0));
+            std::cout << "mat Name: " << lMaterial->GetName() << std::endl;
+            FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
             rObj.diffuse.r = diffColor[0];
             rObj.diffuse.g = diffColor[1];
             rObj.diffuse.b = diffColor[2];
             std::cout << rObj.diffuse.r << "/"<< rObj.diffuse.g << "/"<< rObj.diffuse.b <<std::endl;
         }
+    }
+    
+    
 
-        int verticiesCount = mesh->GetPolygonCount();
-        for(int p = 0; p < verticiesCount; ++p)
+    int verticiesCount = mesh->GetPolygonCount();
+    for(int p = 0; p < verticiesCount; ++p)
+    {
+        for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
         {
-            for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
-            {
-                int vertIndies = mesh->GetPolygonVertex(p, poligonvertex);
-                FbxVector4 vec = mesh->GetControlPointAt(vertIndies);
-                rObj.verticies.push_back(vec.mData[0]);
-                rObj.verticies.push_back(vec.mData[1]);
-                rObj.verticies.push_back(vec.mData[2]);
-                //open3Mod    
-                //verscueh das über pointer zu machen mit m alloc re alloc etc.
-            }
+            int vertIndies = mesh->GetPolygonVertex(p, poligonvertex);
+            FbxVector4 vec = mesh->GetControlPointAt(vertIndies);
+            rObj.verticies.push_back(vec.mData[0]);
+            rObj.verticies.push_back(vec.mData[1]);
+            rObj.verticies.push_back(vec.mData[2]);
+            //open3Mod    
+            //verscueh das über pointer zu machen mit m alloc re alloc etc.
         }
     }
-
-    printf("mesh: %i has verts: %i\n",index, ((int)rObj.verticies.size())/3);
-    
     rObj.vertcount = rObj.verticies.size();
 }
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
