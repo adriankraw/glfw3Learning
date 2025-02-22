@@ -17,19 +17,19 @@
 #include <fstream>
 #include <chrono>
 #include <thread>
-#include <list>
 
 //FBX SDK > assimp
 #include <fbxsdk.h>
+#include <fbxsdk/core/arch/fbxtypes.h>
 #include <fbxsdk/fileio/fbxiosettings.h>
 #include <fbxsdk/core/fbxmanager.h>
 #include <fbxsdk/fileio/fbximporter.h>
 #include <fbxsdk/fileio/fbxiosettingspath.h>
 #include <fbxsdk/scene/fbxscene.h>
 #include <fbxsdk/scene/geometry/fbxmesh.h>
-#include "fbxsdk/scene/constraint/fbxcontrolset.h"
-#include "fbxsdk/scene/geometry/fbxnodeattribute.h"
-#include "fbxsdk/utils/fbxgeometryconverter.h"
+#include <fbxsdk/scene/geometry/fbxnodeattribute.h>
+#include <fbxsdk/utils/fbxgeometryconverter.h>
+#include <fbxsdk/scene/shading/fbxsurfacematerial.h>
 
 #define sizeFaktor 2
 #define FPS 30
@@ -58,6 +58,7 @@ public:
     glm::mat4 rotation;
     float vertcount;
     std::vector<float> verticies;
+    glm::vec3 diffuse;
 };
 
 class FbxControler
@@ -189,19 +190,13 @@ int main(int argc, char** argv)
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     GenerateShaderProgram(&shaderProgram);
 
-    glUniform3f(glGetUniformLocation(shaderProgram, "material.ambient"), 0.0f, 0.12f, 0.31f);
-    glUniform3f(glGetUniformLocation(shaderProgram, "material.diffuse"), 1.0f, 0.5f, 0.31f);
-    glUniform3f(glGetUniformLocation(shaderProgram, "material.specular"), 1.0f, 0.5f, 0.31f);
-    glUniform1f(glGetUniformLocation(shaderProgram, "material.shininess"), 0.5f);
-    
     glm::mat4 trans = glm::mat4(1.0f);
-    const glm::vec3 startPosi = glm::vec3(0.0f,0.0f,-1.0f);
+    const glm::vec3 startPosi = glm::vec3(0.0f,0.0f,0.0f);
     trans = glm::translate(trans, startPosi); 
 
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
-        glUseProgram(shaderProgram);
         /* Render here */
         glTransformArrays(&trans, &shaderProgram);
 
@@ -212,6 +207,13 @@ int main(int argc, char** argv)
         unsigned int lastvercount = 0;
         for( renderObject const& i:rObj)
         {
+            glUniform3f(glGetUniformLocation(shaderProgram, "material.ambient"), (float)i.id/8, 0.12f, 0.31f);
+            glUniform3f(glGetUniformLocation(shaderProgram, "material.diffuse"), 1.0f, 0.5f, 0.31f);
+            glUniform3f(glGetUniformLocation(shaderProgram, "material.specular"), 1.0f, 0.5f, 0.31f);
+            glUniform1f(glGetUniformLocation(shaderProgram, "material.shininess"), 0.5f);
+            glUniform3f(glGetUniformLocation(shaderProgram, "FragPos"), 1, 1, 1);
+            glUseProgram(shaderProgram);
+
             glDrawArrays(GL_TRIANGLES, lastvercount, (i.vertcount/3));
             lastvercount += (i.vertcount/3);
         }
@@ -301,6 +303,18 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
         FbxNode* node = rootNode->GetChild(c);
 
         FbxMesh* mesh = node->GetMesh();
+        for (int m = 0; m < node->GetMaterialCount();++m)
+        {
+            FbxSurfaceMaterial* mat = node->GetMaterial(m);
+            std::cout<< "mat Name: " <<mat->GetName() << std::endl;
+            FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(mat->FindProperty(FbxSurfaceMaterial::sDiffuse));
+            std::cout << *diffColor.Buffer() << std::endl;
+            /*
+            rObj.diffuse.r = diffColor.mData[0];
+            rObj.diffuse.g = diffColor.mData[1];
+            rObj.diffuse.b = diffColor.mData[2];
+            */
+        }
 
         int verticiesCount = mesh->GetPolygonCount();
         for(int p = 0; p < verticiesCount; ++p)
