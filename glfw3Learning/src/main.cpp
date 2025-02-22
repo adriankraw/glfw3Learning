@@ -308,12 +308,11 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
             FbxSurfaceMaterial* mat = node->GetMaterial(m);
             std::cout<< "mat Name: " <<mat->GetName() << std::endl;
             FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(mat->FindProperty(FbxSurfaceMaterial::sDiffuse));
-            std::cout << *diffColor.Buffer() << std::endl;
-            /*
-            rObj.diffuse.r = diffColor.mData[0];
-            rObj.diffuse.g = diffColor.mData[1];
-            rObj.diffuse.b = diffColor.mData[2];
-            */
+            
+            rObj.diffuse.r = diffColor[0];
+            rObj.diffuse.g = diffColor[1];
+            rObj.diffuse.b = diffColor[2];
+            std::cout << rObj.diffuse.r << "/"<< rObj.diffuse.g << "/"<< rObj.diffuse.b <<std::endl;
         }
 
         int verticiesCount = mesh->GetPolygonCount();
