@@ -300,46 +300,68 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
     rObj.id = index;
 
     FbxNode *rootNode = scen.GetRootNode();
-    //rootNode = rootNode->GetChild(index);
     FbxNode* node = rootNode->GetChild(index);
-    if(node->GetNodeAttribute()->GetAttributeType() != FbxNodeAttribute::eMesh) return;
-    rObj.nodetype = fbxsdk::FbxNodeAttribute::EType::eMesh;
-    FbxMesh* mesh = node->GetMesh();
-    for (int m = 0; m < mesh->GetElementMaterialCount();++m)
-    {
-        FbxGeometryElementMaterial* lMaterialElement = mesh->GetElementMaterial(m);
-        if( lMaterialElement->GetMappingMode() == fbxsdk::FbxLayerElement::EMappingMode::eByPolygon)
-        {
-            std::cout << "\nnode: " << node->GetName() << std::endl;
-            std::cout << "polygonCount: " << mesh->GetPolygonCount() << std::endl;
+    if(node->GetNodeAttribute() == nullptr) return;
 
-            FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialElement->GetIndexArray().GetAt(0));
-            std::cout << "mat Name: " << lMaterial->GetName() << std::endl;
-            FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
-            rObj.diffuse.r = diffColor[0];
-            rObj.diffuse.g = diffColor[1];
-            rObj.diffuse.b = diffColor[2];
-            std::cout << rObj.diffuse.r << "/"<< rObj.diffuse.g << "/"<< rObj.diffuse.b <<std::endl;
-        }
-    }
-    
-    
-
-    int verticiesCount = mesh->GetPolygonCount();
-    for(int p = 0; p < verticiesCount; ++p)
+    rObj.nodetype = node->GetNodeAttribute()->GetAttributeType();
+    if(rObj.nodetype == FbxNodeAttribute::eMesh)
     {
-        for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
+        FbxMesh* mesh = node->GetMesh();
+        for (int m = 0; m < mesh->GetElementMaterialCount();++m)
         {
-            int vertIndies = mesh->GetPolygonVertex(p, poligonvertex);
-            FbxVector4 vec = mesh->GetControlPointAt(vertIndies);
-            rObj.verticies.push_back(vec.mData[0]);
-            rObj.verticies.push_back(vec.mData[1]);
-            rObj.verticies.push_back(vec.mData[2]);
-            //open3Mod    
-            //verscueh das über pointer zu machen mit m alloc re alloc etc.
+            FbxGeometryElementMaterial* lMaterialElement = mesh->GetElementMaterial(m);
+            switch(lMaterialElement->GetMappingMode())
+            {
+                case fbxsdk::FbxLayerElement::EMappingMode::eAllSame:
+                {
+                    FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialElement->GetIndexArray().GetAt(0));
+                    FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
+                    rObj.diffuse.r = diffColor[0];
+                    rObj.diffuse.g = diffColor[1];
+                    rObj.diffuse.b = diffColor[2];
+                }
+                    break;
+                case fbxsdk::FbxLayerElement::EMappingMode::eByEdge:
+                    break;
+                case fbxsdk::FbxLayerElement::EMappingMode::eByControlPoint:
+                    break;
+                case fbxsdk::FbxLayerElement::EMappingMode::eByPolygon:
+                {
+                    for (int mat = 0; mat < lMaterialElement->GetIndexArray().GetCount(); ++mat)
+                    {
+                        FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialElement->GetIndexArray().GetAt(mat));
+                        FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
+                        rObj.diffuse.r = diffColor[0];
+                        rObj.diffuse.g = diffColor[1];
+                        rObj.diffuse.b = diffColor[2];
+                    }
+                }
+                    break;
+                case fbxsdk::FbxLayerElement::EMappingMode::eByPolygonVertex:
+                    break;
+                case fbxsdk::FbxLayerElement::EMappingMode::eNone:
+                    break;
+            }
         }
+        
+        
+
+        int verticiesCount = mesh->GetPolygonCount();
+        for(int p = 0; p < verticiesCount; ++p)
+        {
+            for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
+            {
+                int vertIndies = mesh->GetPolygonVertex(p, poligonvertex);
+                FbxVector4 vec = mesh->GetControlPointAt(vertIndies);
+                rObj.verticies.push_back(vec.mData[0]);
+                rObj.verticies.push_back(vec.mData[1]);
+                rObj.verticies.push_back(vec.mData[2]);
+                //open3Mod    
+                //verscueh das über pointer zu machen mit m alloc re alloc etc.
+            }
+        }
+        rObj.vertcount = rObj.verticies.size();
     }
-    rObj.vertcount = rObj.verticies.size();
 }
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
