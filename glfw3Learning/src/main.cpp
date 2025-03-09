@@ -3,8 +3,12 @@
 #include "glm/ext/matrix_float4x4.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/ext/vector_float3.hpp"
+#include "glm/gtc/constants.hpp"
+#include "glm/trigonometric.hpp"
 #include <array>
+#include <cstddef>
 #include <cstdio>
+#include <iterator>
 #include <ostream>
 #define GL_SILENCE_DEPRECATION
 #define GLFW_INCLUDE_GLCOREARB
@@ -59,9 +63,8 @@ public:
     fbxsdk::FbxNodeAttribute::EType nodetype = fbxsdk::FbxNodeAttribute::EType::eNull;
     glm::mat4 translation;
     glm::mat4 rotation;
-    float vertcount;
     std::vector<float> verticies;
-    glm::vec3 diffuse;
+    std::vector<glm::vec3> diffuse;
 };
 
 class FbxControler
@@ -130,6 +133,7 @@ int main(int argc, char** argv)
     
     
     unsigned int VBO;
+    unsigned int VBOMaterial;
     unsigned int VAO;
     unsigned int shaderProgram = 0;
     
@@ -157,45 +161,71 @@ int main(int argc, char** argv)
     
     int nrAttributes;
     glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nrAttributes);
-    
+    glEnable(GL_DEPTH_TEST);
+
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
+    glGenBuffers(1, &VBOMaterial);
     glBindVertexArray(VAO);
-    glEnable(GL_DEPTH_TEST);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
     
     const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
     const FbxScene *scen = LoadFbxFile(*fbxFileLocation);
-    // https://help.autodesk.com/view/FBX/2020/ENU/?guid=FBX_Developer_Help_getting_started_your_first_fbx_sdk_program_html
-    renderObject rObj[scen->GetRootNode()->GetChildCount(true)];
-
-    for(int i = 0; i < scen->GetRootNode()->GetChildCount(true); ++i)
+    renderObject rObj[scen->GetRootNode()->GetChildCount(false)];
+    for(int i = 0; i < scen->GetRootNode()->GetChildCount(false); ++i)
     {
+        //looking for all the children is kind of mest up. ....->GetChildCount(false) is working fine
         ImportMeshData( *scen, rObj[i], i);
     }
-    
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    unsigned int addedVerticies = 0;
+    unsigned int objBufferSize = 0;
     for(renderObject const& i:rObj)
     {
-        addedVerticies += i.vertcount;
+        objBufferSize += i.verticies.size() * sizeof(float);
     }
-    glBufferData(GL_ARRAY_BUFFER, (addedVerticies * sizeof(float)), 0, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, objBufferSize, 0, GL_STATIC_DRAW);
     unsigned int lastbuffer = 0;
     for(renderObject &ro:rObj)
     {
-        glBufferSubData(GL_ARRAY_BUFFER, lastbuffer, ro.verticies.size() * sizeof(float), &ro.verticies[0]);
-        //glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
-        lastbuffer += (ro.verticies.size() * sizeof(float));
+        for(int i = 0; i < ro.verticies.size(); i+=3)
+        {
+            glBufferSubData(GL_ARRAY_BUFFER, lastbuffer, 3 * sizeof(float), &ro.verticies[i]);
+            lastbuffer += 3 * sizeof(float);
+        }
     }
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
     glEnableVertexAttribArray(0);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, VBOMaterial);    
+    objBufferSize = 0;
+    for(renderObject const& i:rObj)
+    {
+        objBufferSize += i.diffuse.size() * sizeof(float);
+    }
+    glBufferData(GL_UNIFORM_BUFFER, objBufferSize, 0, GL_STATIC_DRAW);
+    lastbuffer = 0;
+    for(renderObject &ro:rObj)
+    {
+        for(int i = 0; i < ro.diffuse.size(); ++i)
+        {
+            glBufferSubData(GL_UNIFORM_BUFFER, lastbuffer, sizeof(glm::vec3), &ro.diffuse[i]);
+            lastbuffer += 3 * sizeof(float);
+        }
+    }
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (GLvoid*)0);
+    glEnableVertexAttribArray(1);
+
+
+
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
     GenerateShaderProgram(&shaderProgram);
 
     glm::mat4 trans = glm::mat4(1.0f);
-    const glm::vec3 startPosi = glm::vec3(0.0f,0.0f,0.0f);
+    const glm::vec3 startPosi = glm::vec3(0.0f,-0.8f,0.0f);
     trans = glm::translate(trans, startPosi); 
+    trans = glm::rotate(trans, glm::radians(220.0f), glm::vec3(0,1,0));
 
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
@@ -210,15 +240,18 @@ int main(int argc, char** argv)
         unsigned int lastvercount = 0;
         for( renderObject const& i:rObj)
         {
-            glUniform3f(glGetUniformLocation(shaderProgram, "material.ambient"), 0, 0.12f, 0.31f);
-            glUniform3f(glGetUniformLocation(shaderProgram, "material.diffuse"), i.diffuse.r, i.diffuse.g, i.diffuse.b);
-            glUniform3f(glGetUniformLocation(shaderProgram, "material.specular"), 1.0f, 0.5f, 0.31f);
-            glUniform1f(glGetUniformLocation(shaderProgram, "material.shininess"), 0.5f);
-            glUniform3f(glGetUniformLocation(shaderProgram, "FragPos"), 1, 1, 1);
-            glUseProgram(shaderProgram);
+            if(i.diffuse.size() > 0)
+            {
+                glUniform3f(glGetUniformLocation(shaderProgram, "material.ambient"), 0, 0.12f, 0.31f);
+                glUniform3f(glGetUniformLocation(shaderProgram, "material.diffuse"), i.diffuse[0].x, i.diffuse[0].y, i.diffuse[0].z);
+                glUniform3f(glGetUniformLocation(shaderProgram, "material.specular"), 1.0f, 0.5f, 0.31f);
+                glUniform1f(glGetUniformLocation(shaderProgram, "material.shininess"), 0.5f);
+                glUniform3f(glGetUniformLocation(shaderProgram, "FragPos"), 1, 1, 1);
+                glUseProgram(shaderProgram);
+            }
 
-            glDrawArrays(GL_TRIANGLES, lastvercount, (i.vertcount/3));
-            lastvercount += (i.vertcount/3);
+            glDrawArrays(GL_TRIANGLES, lastvercount, (i.verticies.size()/3));
+            lastvercount += (i.verticies.size()/3);
         }
         
         /* Swap front and back buffers */
@@ -299,26 +332,39 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
 {
     rObj.id = index;
 
-    FbxNode *rootNode = scen.GetRootNode();
+    FbxNode* rootNode = scen.GetRootNode();
     FbxNode* node = rootNode->GetChild(index);
+    if(node->GetChildCount() > 0)
+    {
+        for( size_t c=0; c < node->GetChildCount(); ++c)
+        {
+            //index+=c;
+            //ImportMeshData(scen, rObj, index);
+        }
+    }
     if(node->GetNodeAttribute() == nullptr) return;
 
     rObj.nodetype = node->GetNodeAttribute()->GetAttributeType();
     if(rObj.nodetype == FbxNodeAttribute::eMesh)
     {
         FbxMesh* mesh = node->GetMesh();
+        
+        std::cout << "nodeName " << node->GetName() << std::endl;
         for (int m = 0; m < mesh->GetElementMaterialCount();++m)
         {
             FbxGeometryElementMaterial* lMaterialElement = mesh->GetElementMaterial(m);
+            std::cout << "mesh:" <<mesh->GetName() << std::endl;
             switch(lMaterialElement->GetMappingMode())
             {
                 case fbxsdk::FbxLayerElement::EMappingMode::eAllSame:
                 {
                     FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialElement->GetIndexArray().GetAt(0));
                     FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
-                    rObj.diffuse.r = diffColor[0];
-                    rObj.diffuse.g = diffColor[1];
-                    rObj.diffuse.b = diffColor[2];
+                    for(int i; i < node->GetMesh()->GetPolygonCount(); ++i)
+                    {
+                        //rObj.diffuse.push_back(glm::vec3(diffColor[0],diffColor[1],diffColor[2]));
+                        rObj.diffuse.push_back(glm::vec3(255,0,0));
+                    }
                 }
                     break;
                 case fbxsdk::FbxLayerElement::EMappingMode::eByEdge:
@@ -331,9 +377,7 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
                     {
                         FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialElement->GetIndexArray().GetAt(mat));
                         FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
-                        rObj.diffuse.r = diffColor[0];
-                        rObj.diffuse.g = diffColor[1];
-                        rObj.diffuse.b = diffColor[2];
+                        rObj.diffuse.push_back(glm::vec3(diffColor[0],diffColor[1],diffColor[2]));
                     }
                 }
                     break;
@@ -346,6 +390,7 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
         
         
 
+        std::cout << "nodeName " << node->GetName() << std::endl;
         int verticiesCount = mesh->GetPolygonCount();
         for(int p = 0; p < verticiesCount; ++p)
         {
@@ -360,7 +405,7 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
                 //verscueh das über pointer zu machen mit m alloc re alloc etc.
             }
         }
-        rObj.vertcount = rObj.verticies.size();
+        std::cout << "nodeName " << node->GetName() << std::endl;
     }
 }
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
