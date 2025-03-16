@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <iterator>
 #include <ostream>
+#include <vector>
 #define GL_SILENCE_DEPRECATION
 #define GLFW_INCLUDE_GLCOREARB
 
@@ -56,6 +57,13 @@ unsigned int vertexShader,fragmentShader;
 void glTransformArrays(glm::mat4 *trans, unsigned int *shaderProgram);
 
 //fbx
+class renderPoly
+{
+public:
+    unsigned int id;
+    std::vector<unsigned int> indices;
+    renderPoly(int _id) {id = _id;};
+};
 class renderObject
 {
 public:
@@ -63,6 +71,8 @@ public:
     fbxsdk::FbxNodeAttribute::EType nodetype = fbxsdk::FbxNodeAttribute::EType::eNull;
     glm::mat4 translation;
     glm::mat4 rotation;
+    std::vector<renderPoly> polies;
+    std::vector<unsigned int> vertIndices;
     std::vector<float> verticies;
     std::vector<float> diffuse;
 };
@@ -132,7 +142,7 @@ int main(int argc, char** argv)
     glfwWindowHint (GLFW_REFRESH_RATE, mode->refreshRate);
     
     
-    unsigned int VBO;
+    unsigned int VBO, VBOIndices;
     unsigned int VBOMaterial;
     unsigned int VAO;
     unsigned int shaderProgram = 0;
@@ -165,6 +175,7 @@ int main(int argc, char** argv)
 
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
+    glGenBuffers(1, &VBOIndices);
     glGenBuffers(1, &VBOMaterial);
     glBindVertexArray(VAO);
     
@@ -178,6 +189,7 @@ int main(int argc, char** argv)
         ImportMeshData( *scen, rObj[i], i);
     }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     unsigned int objBufferSize = 0;
     for(renderObject const& i:rObj)
@@ -192,8 +204,28 @@ int main(int argc, char** argv)
         lastbuffer += ro.verticies.size() * sizeof(float);
     }
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBOIndices);
+    objBufferSize = 0;
+    for(renderObject const& i:rObj)
+    {
+
+        objBufferSize += i.vertIndices.size() * sizeof(unsigned int);
+    }
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, objBufferSize, 0, GL_STATIC_DRAW);
+    lastbuffer = 0;
+    for(renderObject const& ro:rObj)
+    {
+
+        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, lastbuffer, ro.vertIndices.size() * sizeof(unsigned int), &ro.vertIndices[0]);
+        lastbuffer += ro.vertIndices.size() * sizeof(unsigned int);
+
+    }
     glEnableVertexAttribArray(0);
 
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
     glBindBuffer(GL_ARRAY_BUFFER, VBOMaterial);    
     objBufferSize = 0;
     for(renderObject const& i:rObj)
@@ -209,7 +241,7 @@ int main(int argc, char** argv)
     }
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
     glEnableVertexAttribArray(1);
-
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
     GenerateShaderProgram(&shaderProgram);
 
@@ -232,9 +264,9 @@ int main(int argc, char** argv)
         for( renderObject const& i:rObj)
         {
             glUseProgram(shaderProgram);
+            glBindVertexArray(VAO);
 
-            glDrawArrays(GL_TRIANGLES, lastvercount, (i.verticies.size()/3));
-            lastvercount += (i.verticies.size()/3);
+            glDrawElements(GL_TRIANGLES, i.vertIndices.size(), GL_UNSIGNED_INT, NULL);
         }
         
         /* Swap front and back buffers */
@@ -386,17 +418,21 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
 
         std::cout << "nodeName " << node->GetName() << std::endl;
         int verticiesCount = mesh->GetPolygonCount();
+        for(int v = 0;v < mesh->GetControlPointsCount(); ++v)
+        {
+            FbxVector4 vec = mesh->GetControlPointAt(v);
+            rObj.verticies.push_back(vec.mData[0]);
+            rObj.verticies.push_back(vec.mData[1]);
+            rObj.verticies.push_back(vec.mData[2]);
+        }
         for(int p = 0; p < verticiesCount; ++p)
         {
             for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
             {
                 int vertIndies = mesh->GetPolygonVertex(p, poligonvertex);
-                FbxVector4 vec = mesh->GetControlPointAt(vertIndies);
-                rObj.verticies.push_back(vec.mData[0]);
-                rObj.verticies.push_back(vec.mData[1]);
-                rObj.verticies.push_back(vec.mData[2]);
-                //open3Mod    
-                //verscueh das über pointer zu machen mit m alloc re alloc etc.
+                rObj.vertIndices.push_back(vertIndies);
+                //rObj.polies.push_back(renderPoly(poligonvertex));
+                //rObj.polies.back().indices.push_back(vertIndies);
             }
         }
         std::cout << "nodeName " << node->GetName() << std::endl;
