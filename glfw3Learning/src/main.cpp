@@ -203,14 +203,11 @@ int main(int argc, char** argv)
         glBufferSubData(GL_ARRAY_BUFFER, lastbuffer, ro.verticies.size() * sizeof(float), &ro.verticies[0]);
         lastbuffer += ro.verticies.size() * sizeof(float);
     }
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
-
 //////////////////////////////////////////////////////////////////////////////////////////////////
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBOIndices);
     objBufferSize = 0;
     for(renderObject const& i:rObj)
     {
-
         objBufferSize += i.vertIndices.size() * sizeof(unsigned int);
     }
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, objBufferSize, 0, GL_STATIC_DRAW);
@@ -222,9 +219,6 @@ int main(int argc, char** argv)
         lastbuffer += ro.vertIndices.size() * sizeof(unsigned int);
 
     }
-    glEnableVertexAttribArray(0);
-
-
 //////////////////////////////////////////////////////////////////////////////////////////////////
     glBindBuffer(GL_ARRAY_BUFFER, VBOMaterial);    
     objBufferSize = 0;
@@ -239,39 +233,56 @@ int main(int argc, char** argv)
         glBufferSubData(GL_ARRAY_BUFFER, lastbuffer, ro.diffuse.size() * sizeof(float), &ro.diffuse[0]);
         lastbuffer += ro.diffuse.size() * sizeof(float);
     }
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
-    glEnableVertexAttribArray(1);
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
     GenerateShaderProgram(&shaderProgram);
 
     glm::mat4 trans = glm::mat4(1.0f);
-    const glm::vec3 startPosi = glm::vec3(0.0f,-0.8f,0.0f);
-    trans = glm::translate(trans, startPosi); 
     trans = glm::rotate(trans, glm::radians(220.0f), glm::vec3(0,1,0));
+
+    for (auto const& r:rObj)
+    {
+        std::cout << "verts: " <<  r.verticies.size() << " indices: " << r.vertIndices.size() << " colors: " << r.diffuse.size() << std::endl;
+    }
 
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
-        /* Render here */
-        glTransformArrays(&trans, &shaderProgram);
-
         // rendering done
         glClearColor(0.0f,0.0f,0.0f,0.0f); // Clear the buffers
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        
+
+        glUseProgram(shaderProgram);
+        // Enable position attribute
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
+        glEnableVertexAttribArray(0);
+
+        // Enable color attribute
+        glBindBuffer(GL_ARRAY_BUFFER, VBOMaterial);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
+        glEnableVertexAttribArray(1);
+
+        GLenum error = glGetError();
+        if (error != GL_NO_ERROR) {
+            std::cout << "OpenGL error: " << error << std::endl;
+        }
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBOIndices);
+        glTransformArrays(&trans, &shaderProgram);
+
         unsigned int lastvercount = 0;
         for( renderObject const& i:rObj)
         {
-            glUseProgram(shaderProgram);
-            glBindVertexArray(VAO);
-
-            glDrawElements(GL_TRIANGLES, i.vertIndices.size(), GL_UNSIGNED_INT, NULL);
+            //glDrawArrays(GL_TRIANGLES, lastvercount, i.vertIndices.size());
+            lastvercount += i.vertIndices.size();
         }
+        //glDrawElements(GL_TRIANGLES, lastvercount, GL_UNSIGNED_INT, 0);
         
-        /* Swap front and back buffers */
+        glDisableVertexAttribArray(0);
+        glDisableVertexAttribArray(1);
+
         glfwSwapBuffers(window);
-        /* Poll for and process events */
         glfwPollEvents();
         
         std::this_thread::sleep_for(std::chrono::milliseconds(1000/FPS));
@@ -363,9 +374,27 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
     rObj.nodetype = node->GetNodeAttribute()->GetAttributeType();
     if(rObj.nodetype == FbxNodeAttribute::eMesh)
     {
-        FbxMesh* mesh = node->GetMesh();
-        
         std::cout << "nodeName " << node->GetName() << std::endl;
+        FbxMesh* mesh = node->GetMesh();
+
+        int verticiesCount = mesh->GetPolygonCount();
+        for(int v = 0;v < mesh->GetControlPointsCount(); ++v)
+        {
+            FbxVector4 vec = mesh->GetControlPointAt(v);
+            rObj.verticies.push_back(vec.mData[0]);
+            rObj.verticies.push_back(vec.mData[1]);
+            rObj.verticies.push_back(vec.mData[2]);
+        }
+
+        for(int p = 0; p < verticiesCount; ++p)
+        {
+            for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
+            {
+                int vertIndies = mesh->GetPolygonVertex(p, poligonvertex);
+                rObj.vertIndices.push_back(vertIndies);
+            }
+        }
+
         for (int m = 0; m < mesh->GetElementMaterialCount();++m)
         {
             FbxGeometryElementMaterial* lMaterialElement = mesh->GetElementMaterial(m);
@@ -378,7 +407,6 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
                     FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
                     for(int i; i < node->GetMesh()->GetPolygonCount(); ++i)
                     {
-                        //rObj.diffuse.push_back(glm::vec3(diffColor[0],diffColor[1],diffColor[2]));
                         rObj.diffuse.push_back(diffColor[0]);
                         rObj.diffuse.push_back(diffColor[1]);
                         rObj.diffuse.push_back(diffColor[2]);
@@ -388,19 +416,14 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
                 case fbxsdk::FbxLayerElement::EMappingMode::eByEdge:
                     break;
                 case fbxsdk::FbxLayerElement::EMappingMode::eByControlPoint:
+                    std::cout << "eByControlPoints found" << "\n";
                     break;
                 case fbxsdk::FbxLayerElement::EMappingMode::eByPolygon:
                 {
-                    double debugColor = 0;
-                    for (int mat = 0; mat < lMaterialElement->GetIndexArray().GetCount(); ++mat)
+                    for(int mat = 0; mat < node->GetMesh()->GetPolygonCount(); ++mat)
                     {
-                        FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialElement->GetIndexArray().GetAt(mat));
+                        FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialElement->GetIndexArray().GetAt(rObj.vertIndices[mat]));
                         FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
-                        if ((diffColor[0] + diffColor[1] + diffColor[2]) != debugColor)
-                        {
-                            debugColor = (diffColor[0] + diffColor[1] + diffColor[2]);
-                            std::cout << mat << "=>" <<diffColor[0] << ":" << diffColor[1] << ":" << diffColor[2] << "\n";
-                        }
                         rObj.diffuse.push_back(diffColor[0]);
                         rObj.diffuse.push_back(diffColor[1]);
                         rObj.diffuse.push_back(diffColor[2]);
@@ -413,29 +436,6 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
                     break;
             }
         }
-        
-        
-
-        std::cout << "nodeName " << node->GetName() << std::endl;
-        int verticiesCount = mesh->GetPolygonCount();
-        for(int v = 0;v < mesh->GetControlPointsCount(); ++v)
-        {
-            FbxVector4 vec = mesh->GetControlPointAt(v);
-            rObj.verticies.push_back(vec.mData[0]);
-            rObj.verticies.push_back(vec.mData[1]);
-            rObj.verticies.push_back(vec.mData[2]);
-        }
-        for(int p = 0; p < verticiesCount; ++p)
-        {
-            for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
-            {
-                int vertIndies = mesh->GetPolygonVertex(p, poligonvertex);
-                rObj.vertIndices.push_back(vertIndies);
-                //rObj.polies.push_back(renderPoly(poligonvertex));
-                //rObj.polies.back().indices.push_back(vertIndies);
-            }
-        }
-        std::cout << "nodeName " << node->GetName() << std::endl;
     }
 }
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
