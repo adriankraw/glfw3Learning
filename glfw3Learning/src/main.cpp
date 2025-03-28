@@ -91,13 +91,13 @@ FbxScene* LoadFbxFile(const char& pFile);
 void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index);
 
 //argv
-std::string ArgvTrans = "-t";
-
+const std::string ArgvTrans = "-t";
+const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
 FbxControler *controller = new FbxControler();
 
 int main(int argc, char** argv)
 {
-    GLFWwindow* window;
+    GLFWwindow* window;    
     /* Initialize the library */
     if ( !glfwInit() )
     {
@@ -120,7 +120,6 @@ int main(int argc, char** argv)
     int count;
     GLFWmonitor **monitors = glfwGetMonitors(&count);
 
-
     for(int i = 0; i < count; ++i)
     {
         GLFWmonitor &moniforName = **(monitors+i);
@@ -140,19 +139,18 @@ int main(int argc, char** argv)
     glfwWindowHint (GLFW_GREEN_BITS, mode->greenBits);
     glfwWindowHint (GLFW_BLUE_BITS, mode->blueBits);
     glfwWindowHint (GLFW_REFRESH_RATE, mode->refreshRate);
-    
-    
-    unsigned int VBO, VBOIndices;
+
+    unsigned int VBO, EBO;
     unsigned int VBOMaterial;
     unsigned int VAO;
     unsigned int shaderProgram = 0;
     
-    //end
-
     glfwSetErrorCallback(error_callback);
-    /* Create a windowed mode window and its OpenGL context */
-    window = glfwCreateWindow( mode->width, mode->height, "OpenGl", NULL , NULL );
-    
+
+    window = glfwCreateWindow( mode->width, mode->height, "OpenGl", NULL , NULL);
+    glfwMakeContextCurrent(window);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);   
+
     glfwSetKeyCallback(window, key_callback);
     glfwSetScrollCallback(window, scroll_callback );
     
@@ -162,125 +160,69 @@ int main(int argc, char** argv)
         std::cout << "Failes to create GLFW window" << std::endl;
         return -1;
     }
-    
-    /* Make the window's context current */
-    glfwMakeContextCurrent(window);
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    
     std::cout << glfwGetVersionString()<< std::endl;
     
     int nrAttributes;
     glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nrAttributes);
     glEnable(GL_DEPTH_TEST);
-
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glGenBuffers(1, &VBOIndices);
-    glGenBuffers(1, &VBOMaterial);
-    glBindVertexArray(VAO);
     
-    
-    const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
     const FbxScene *scen = LoadFbxFile(*fbxFileLocation);
-    renderObject rObj[scen->GetRootNode()->GetChildCount(false)];
-    for(int i = 0; i < scen->GetRootNode()->GetChildCount(false); ++i)
+    int rObjCount = scen->GetRootNode()->GetChildCount(false);
+    renderObject rObj[rObjCount];
+    //renderObject rObj[1];
+    for (int i = 0; i < rObjCount; ++i)
     {
-        //looking for all the children is kind of mest up. ....->GetChildCount(false) is working fine
         ImportMeshData( *scen, rObj[i], i);
     }
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
+    glGenBuffers(1, &VBOMaterial);
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    unsigned int objBufferSize = 0;
-    for(renderObject const& i:rObj)
-    {
-        objBufferSize += i.verticies.size() * sizeof(float);
-    }
-    glBufferData(GL_ARRAY_BUFFER, objBufferSize, 0, GL_STATIC_DRAW);
-    unsigned int lastbuffer = 0;
-    for(renderObject const& ro:rObj)
-    {
-        glBufferSubData(GL_ARRAY_BUFFER, lastbuffer, ro.verticies.size() * sizeof(float), &ro.verticies[0]);
-        lastbuffer += ro.verticies.size() * sizeof(float);
-    }
-//////////////////////////////////////////////////////////////////////////////////////////////////
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBOIndices);
-    objBufferSize = 0;
-    for(renderObject const& i:rObj)
-    {
-        objBufferSize += i.vertIndices.size() * sizeof(unsigned int);
-    }
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, objBufferSize, 0, GL_STATIC_DRAW);
-    lastbuffer = 0;
-    for(renderObject const& ro:rObj)
-    {
-
-        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, lastbuffer, ro.vertIndices.size() * sizeof(unsigned int), &ro.vertIndices[0]);
-        lastbuffer += ro.vertIndices.size() * sizeof(unsigned int);
-
-    }
-//////////////////////////////////////////////////////////////////////////////////////////////////
-    glBindBuffer(GL_ARRAY_BUFFER, VBOMaterial);    
-    objBufferSize = 0;
-    for(renderObject const& i:rObj)
-    {
-        objBufferSize += i.diffuse.size() * sizeof(float);
-    }
-    glBufferData(GL_ARRAY_BUFFER, objBufferSize, 0, GL_STATIC_DRAW);
-    lastbuffer = 0;
-    for(renderObject const& ro:rObj)
-    {
-        glBufferSubData(GL_ARRAY_BUFFER, lastbuffer, ro.diffuse.size() * sizeof(float), &ro.diffuse[0]);
-        lastbuffer += ro.diffuse.size() * sizeof(float);
-    }
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
+    int i = 1;
     GenerateShaderProgram(&shaderProgram);
-
     glm::mat4 trans = glm::mat4(1.0f);
-    trans = glm::rotate(trans, glm::radians(220.0f), glm::vec3(0,1,0));
-
-    for (auto const& r:rObj)
-    {
-        std::cout << "verts: " <<  r.verticies.size() << " indices: " << r.vertIndices.size() << " colors: " << r.diffuse.size() << std::endl;
-    }
+    //trans = glm::rotate(trans, glm::radians(220.0f), glm::vec3(0,1,0));
 
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
-        // rendering done
-        glClearColor(0.0f,0.0f,0.0f,0.0f); // Clear the buffers
+        glTransformArrays(&trans, &shaderProgram);
+
+        // clear last frame
+        glClearColor(0.0f,0.0f,0.0f,0.0f); 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        glUseProgram(shaderProgram);
-        // Enable position attribute
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
-        glEnableVertexAttribArray(0);
-
-        // Enable color attribute
-        glBindBuffer(GL_ARRAY_BUFFER, VBOMaterial);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
-        glEnableVertexAttribArray(1);
 
         GLenum error = glGetError();
         if (error != GL_NO_ERROR) {
             std::cout << "OpenGL error: " << error << std::endl;
         }
-
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBOIndices);
-        glTransformArrays(&trans, &shaderProgram);
-
-        unsigned int lastvercount = 0;
-        for( renderObject const& i:rObj)
+        for (int i = 0; i < rObjCount; ++i)
         {
-            //glDrawArrays(GL_TRIANGLES, lastvercount, i.vertIndices.size());
-            lastvercount += i.vertIndices.size();
+            if (rObj[i].nodetype !=FbxNodeAttribute::eMesh) continue;
+            glBindVertexArray(VAO);
+
+            glBindBuffer(GL_ARRAY_BUFFER, VBO);
+            glBufferData(GL_ARRAY_BUFFER, rObj[i].verticies.size() * sizeof(float), &rObj[i].verticies[0], GL_STATIC_DRAW);
+
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, rObj[i].vertIndices.size() * sizeof(unsigned int), &rObj[i].vertIndices[0], GL_STATIC_DRAW);
+            //////////////////////////////////////////////////////////////////////////////////////////////////
+            //glBindBuffer(GL_ARRAY_BUFFER, VBOMaterial);    
+            //glBufferData(GL_ARRAY_BUFFER, rObj[i].diffuse.size() * sizeof(float), &rObj[i].diffuse[0], GL_STATIC_DRAW);
+            //////////////////////////////////////////////////////////////////////////////////////////////////
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
+            glEnableVertexAttribArray(0);
+            //glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
+            //glEnableVertexAttribArray(1);
+            
+            glBindVertexArray(0);
+            glUseProgram(shaderProgram);
+            glBindVertexArray(VAO);
+            glDrawElements(GL_TRIANGLES, rObj[i].vertIndices.size(), GL_UNSIGNED_INT, 0);
         }
-        //glDrawElements(GL_TRIANGLES, lastvercount, GL_UNSIGNED_INT, 0);
-        
-        glDisableVertexAttribArray(0);
-        glDisableVertexAttribArray(1);
+        //glDisableVertexAttribArray(0);
+        //glDisableVertexAttribArray(1);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -361,14 +303,6 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
 
     FbxNode* rootNode = scen.GetRootNode();
     FbxNode* node = rootNode->GetChild(index);
-    if(node->GetChildCount() > 0)
-    {
-        for( size_t c=0; c < node->GetChildCount(); ++c)
-        {
-            //index+=c;
-            //ImportMeshData(scen, rObj, index);
-        }
-    }
     if(node->GetNodeAttribute() == nullptr) return;
 
     rObj.nodetype = node->GetNodeAttribute()->GetAttributeType();
