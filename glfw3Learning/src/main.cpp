@@ -1,14 +1,12 @@
 //opengl
 #include "fbxsdk/scene/geometry/fbxlayer.h"
+#include "fbxsdk/scene/geometry/fbxnode.h"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/ext/vector_float3.hpp"
-#include "glm/gtc/constants.hpp"
 #include "glm/trigonometric.hpp"
-#include <array>
 #include <cstddef>
 #include <cstdio>
-#include <iterator>
 #include <ostream>
 #include <vector>
 #define GL_SILENCE_DEPRECATION
@@ -87,12 +85,38 @@ class FbxControler
         float zoomlevel = 1;
 };
 
+const std::string AttributTypeToString[]  = {
+        "eUnknown",
+        "eNull",
+        "eMarker",
+        "eSkeleton", 
+        "eMesh", 
+        "eNurbs", 
+        "ePatch",
+        "eCamera", 
+        "eCameraStereo",
+        "eCameraSwitcher",
+        "eLight",
+        "eOpticalReference",
+        "eOpticalMarker",
+        "eNurbsCurve",
+        "eTrimNurbsSurface",
+        "eBoundary",
+        "eNurbsSurface",
+        "eShape",
+        "eLODGroup",
+        "eSubDiv",
+        "eCachedEffect",
+        "eLine"
+};
+
 FbxScene* LoadFbxFile(const char& pFile);
-void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index);
+void ImportMeshData(FbxNode* scen,  std::vector<renderObject>* rObj, int& index);
 
 //argv
 const std::string ArgvTrans = "-t";
 const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
+//const char* fbxFileLocation = "./models/untitled1.fbx";
 FbxControler *controller = new FbxControler();
 
 int main(int argc, char** argv)
@@ -168,11 +192,12 @@ int main(int argc, char** argv)
     
     const FbxScene *scen = LoadFbxFile(*fbxFileLocation);
     int rObjCount = scen->GetRootNode()->GetChildCount(false);
-    renderObject rObj[rObjCount];
-    //renderObject rObj[1];
+    //int rObjCount = scen->GetNodeCount();
+    std::vector<renderObject> rObj;
     for (int i = 0; i < rObjCount; ++i)
     {
-        ImportMeshData( *scen, rObj[i], i);
+        FbxNode* rootNode = scen->GetRootNode();
+        ImportMeshData( rootNode->GetChild(i), &rObj, i);
     }
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -181,7 +206,7 @@ int main(int argc, char** argv)
 
     GenerateShaderProgram(&shaderProgram);
     glm::mat4 trans = glm::mat4(1.0f);
-    //trans = glm::rotate(trans, glm::radians(220.0f), glm::vec3(0,1,0));
+    trans = glm::rotate(trans, glm::radians(220.0f), glm::vec3(0,1,0));
 
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
@@ -218,9 +243,9 @@ int main(int argc, char** argv)
             glUseProgram(shaderProgram);
             glBindVertexArray(VAO);
             glDrawElements(GL_TRIANGLES, rObj[i].vertIndices.size(), GL_UNSIGNED_INT, 0);
+            //glDisableVertexAttribArray(0);
+            //glDisableVertexAttribArray(1);
         }
-        //glDisableVertexAttribArray(0);
-        //glDisableVertexAttribArray(1);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -290,21 +315,33 @@ FbxScene* LoadFbxFile(const char& pFile)
     lImporter->Import(scen);
     lImporter->Destroy();
     FbxGeometryConverter converter(SDKManager);
+    converter.SplitMeshesPerMaterial(scen, false);
     converter.Triangulate(scen, true, true);
 
     return scen;
 }
-
-void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
+void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& index)
 {
-    rObj.id = index;
+    if(node->GetMesh() == nullptr) 
+    {
+        std::cout << "0" << std::endl;
+        return;
+    }
 
-    FbxNode* rootNode = scen.GetRootNode();
-    FbxNode* node = rootNode->GetChild(index);
-    if(node->GetNodeAttribute() == nullptr) return;
+    std::cout << "node:" << node->GetName() << ": " << AttributTypeToString[node->GetNodeAttribute()->GetAttributeType()] << std::endl;
+    renderObject *rObj = new renderObject();
+    rObj->id = index;
 
-    rObj.nodetype = node->GetNodeAttribute()->GetAttributeType();
-    if(rObj.nodetype == FbxNodeAttribute::eMesh)
+    if(node->GetChildCount() > 0)
+    {
+        for(int c = 0; c < node->GetChildCount(); ++c)
+        {
+            ImportMeshData(node->GetChild(c), renderList, index);
+        }
+    }
+
+    rObj->nodetype = node->GetNodeAttribute()->GetAttributeType();
+    if(rObj->nodetype == FbxNodeAttribute::eMesh)
     {
         std::cout << "nodeName " << node->GetName() << std::endl;
         FbxMesh* mesh = node->GetMesh();
@@ -314,40 +351,42 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
         for(int v = 0;v < mesh->GetControlPointsCount(); ++v)
         {
             FbxVector4 vec = mesh->GetControlPointAt(v);
-            rObj.verticies.push_back(vec.mData[0]);
-            rObj.verticies.push_back(vec.mData[1]);
-            rObj.verticies.push_back(vec.mData[2]);
+            rObj->verticies.push_back(vec.mData[0]);
+            rObj->verticies.push_back(vec.mData[1]);
+            rObj->verticies.push_back(vec.mData[2]);
         }
-        std::cout << rObj.verticies.size() << std::endl;
+        std::cout << rObj->verticies.size() << std::endl;
 
         for(int p = 0; p < verticiesCount; ++p)
         {
             for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
             {
                 int vertIndies = mesh->GetPolygonVertex(p, poligonvertex);
-                rObj.vertIndices.push_back(vertIndies);
+                rObj->vertIndices.push_back(vertIndies);
             }
         }
-        std::cout << rObj.vertIndices.size() << std::endl;
-        std::cout << "mat Count" << mesh->GetElementMaterialCount() << std::endl;
+        std::cout << rObj->vertIndices.size() << std::endl;
+        std::cout << "mat Count" << node->GetMaterialCount() << std::endl;
 
         for (int m = 0; m < mesh->GetElementMaterialCount();++m)
         {
             FbxGeometryElementMaterial* lMaterialElement = mesh->GetElementMaterial(m);
+            FbxSurfaceMaterial* surfaceMaterial = node->GetMaterial(m);
 
             switch(lMaterialElement->GetMappingMode())
             {
                 case fbxsdk::FbxLayerElement::EMappingMode::eAllSame:
                 {
-                    FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialElement->GetIndexArray().GetAt(0));
-                    FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
-                    for(auto const& mat: rObj.vertIndices)
+                    for(unsigned int mat = 0; mat < mesh->GetPolygonCount(); ++mat)
                     {
-                        rObj.diffuse.push_back(diffColor[0]);
-                        rObj.diffuse.push_back(diffColor[1]);
-                        rObj.diffuse.push_back(diffColor[2]);
+                        const int lMaterialIndex = lMaterialElement->GetIndexArray().GetAt(mat);
+                        FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialIndex);
+                        FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
+                        rObj->diffuse.emplace_back(diffColor[0]);
+                        rObj->diffuse.emplace_back(diffColor[1]);
+                        rObj->diffuse.emplace_back(diffColor[2]);
                     }
-                    std::cout<< "----------All Same  " << rObj.diffuse.size()/3 << std::endl;
+                    std::cout<< "----------All Same  " << rObj->diffuse.size()/3 << std::endl;
                 }
                     break;
                 case fbxsdk::FbxLayerElement::EMappingMode::eByEdge:
@@ -357,15 +396,16 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
                     break;
                 case fbxsdk::FbxLayerElement::EMappingMode::eByPolygon:
                 {
-                    for(auto const& mat: rObj.vertIndices)
+                    for(unsigned int mat = 0; mat < mesh->GetPolygonCount(); ++mat)
                     {
-                        FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialElement->GetIndexArray().GetAt(mat));
+                        const int lMaterialIndex = lMaterialElement->GetIndexArray().GetAt(mat);
+                        FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialIndex);
                         FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
-                        rObj.diffuse.push_back(diffColor[0]);
-                        rObj.diffuse.push_back(diffColor[1]);
-                        rObj.diffuse.push_back(diffColor[2]);
+                        rObj->diffuse.emplace_back(diffColor[0]);
+                        rObj->diffuse.emplace_back(diffColor[1]);
+                        rObj->diffuse.emplace_back(diffColor[2]);
                     }
-                    std::cout<< "--------By Poligon  " << rObj.diffuse.size()/3 << std::endl;
+                    std::cout<< "--------By Poligon  " << rObj->diffuse.size()/3 << std::endl;
                 }
                     break;
                 case fbxsdk::FbxLayerElement::EMappingMode::eByPolygonVertex:
@@ -374,6 +414,8 @@ void ImportMeshData(const FbxScene& scen,  renderObject& rObj, int& index)
                     break;
             }
         }
+
+    renderList->emplace_back(*rObj);
     }
 }
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)

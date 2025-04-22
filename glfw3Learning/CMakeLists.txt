@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.16.3)
 
 project(glfw3Learning)
 set(CMAKE_STATIC_LINKER_FLAGS "-liconv")
+SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+SET(BUILD_MODE Debug)
+SET(CMAKE_CXX_FLAGS "-Wall")
+SET(CMAKE_CXX_FLAGS_DEBUG "-g")
+SET(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 set(ICONV_DIR /opt/homebrew/opt/libiconv)
 set(Iconv_LIBRARY /opt/homebrew/opt/libiconv/lib/libiconv.a)
