@@ -115,8 +115,8 @@ void ImportMeshData(FbxNode* scen,  std::vector<renderObject>* rObj, int& index)
 
 //argv
 const std::string ArgvTrans = "-t";
-const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
-//const char* fbxFileLocation = "./models/untitled1.fbx";
+//const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
+const char* fbxFileLocation = "./models/untitled1.fbx";
 FbxControler *controller = new FbxControler();
 
 int main(int argc, char** argv)
@@ -190,14 +190,13 @@ int main(int argc, char** argv)
     glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nrAttributes);
     glEnable(GL_DEPTH_TEST);
     
-    const FbxScene *scen = LoadFbxFile(*fbxFileLocation);
-    int rObjCount = scen->GetRootNode()->GetChildCount(false);
+    FbxScene *scen = LoadFbxFile(*fbxFileLocation);
+    int rObjCount = scen->GetNodeCount();
     //int rObjCount = scen->GetNodeCount();
     std::vector<renderObject> rObj;
     for (int i = 0; i < rObjCount; ++i)
     {
-        FbxNode* rootNode = scen->GetRootNode();
-        ImportMeshData( rootNode->GetChild(i), &rObj, i);
+        ImportMeshData( scen->GetNode(i), &rObj, i);
     }
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -249,7 +248,7 @@ int main(int argc, char** argv)
 
         glfwSwapBuffers(window);
         glfwPollEvents();
-        
+         
         std::this_thread::sleep_for(std::chrono::milliseconds(1000/FPS));
     }
     glDeleteVertexArrays(1, &VAO);
@@ -315,7 +314,7 @@ FbxScene* LoadFbxFile(const char& pFile)
     lImporter->Import(scen);
     lImporter->Destroy();
     FbxGeometryConverter converter(SDKManager);
-    converter.SplitMeshesPerMaterial(scen, false);
+    converter.SplitMeshesPerMaterial(scen, true);
     converter.Triangulate(scen, true, true);
 
     return scen;
@@ -324,7 +323,6 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
 {
     if(node->GetMesh() == nullptr) 
     {
-        std::cout << "0" << std::endl;
         return;
     }
 
@@ -332,18 +330,11 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
     renderObject *rObj = new renderObject();
     rObj->id = index;
 
-    if(node->GetChildCount() > 0)
-    {
-        for(int c = 0; c < node->GetChildCount(); ++c)
-        {
-            ImportMeshData(node->GetChild(c), renderList, index);
-        }
-    }
-
     rObj->nodetype = node->GetNodeAttribute()->GetAttributeType();
     if(rObj->nodetype == FbxNodeAttribute::eMesh)
     {
         std::cout << "nodeName " << node->GetName() << std::endl;
+        //FbxMesh* mesh = node->GetMesh()->GetElementVisibility();
         FbxMesh* mesh = node->GetMesh();
         std::cout << "mesh:" << mesh->GetName() << std::endl;
 
@@ -386,6 +377,7 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
                         rObj->diffuse.emplace_back(diffColor[1]);
                         rObj->diffuse.emplace_back(diffColor[2]);
                     }
+                    
                     std::cout<< "----------All Same  " << rObj->diffuse.size()/3 << std::endl;
                 }
                     break;
