@@ -4,10 +4,12 @@
 #include "glm/ext/matrix_float4x4.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/ext/vector_float3.hpp"
+#include "glm/geometric.hpp"
 #include "glm/trigonometric.hpp"
 #include <cstddef>
 #include <cstdio>
 #include <ostream>
+#include <string>
 #include <vector>
 #define GL_SILENCE_DEPRECATION
 #define GLFW_INCLUDE_GLCOREARB
@@ -36,6 +38,11 @@
 #include <fbxsdk/utils/fbxgeometryconverter.h>
 #include <fbxsdk/scene/shading/fbxsurfacematerial.h>
 
+//imgui 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 #define sizeFaktor 2
 #define FPS 30
 #define shaderpath "./"
@@ -45,12 +52,15 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void error_callback(int code, const char* description);
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+void windowFocus_callback(GLFWwindow* window, int focused);
 //shader
 const GLchar* readFromFile(const GLchar* pathToFile);
 void GenerateShaderProgram(unsigned int *_shaderProgram);
 std::string shadercontent = "";
 unsigned int vertexShader,fragmentShader;
 
+//Camera
+void SetupCamera(glm::mat4 *view);
 //modification
 void glTransformArrays(glm::mat4 *trans, unsigned int *shaderProgram);
 
@@ -66,6 +76,7 @@ class renderObject
 {
 public:
     unsigned int id;
+    const char* name;
     fbxsdk::FbxNodeAttribute::EType nodetype = fbxsdk::FbxNodeAttribute::EType::eNull;
     glm::mat4 translation;
     glm::mat4 rotation;
@@ -112,6 +123,8 @@ const std::string AttributTypeToString[]  = {
 
 FbxScene* LoadFbxFile(const char& pFile);
 void ImportMeshData(FbxNode* scen,  std::vector<renderObject>* rObj, int& index);
+
+void RenderImGuiNodeHierarchy(FbxNode * node);
 
 //argv
 const std::string ArgvTrans = "-t";
@@ -176,8 +189,28 @@ int main(int argc, char** argv)
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);   
 
     glfwSetKeyCallback(window, key_callback);
-    glfwSetScrollCallback(window, scroll_callback );
-    
+    glfwSetScrollCallback(window, scroll_callback);
+    glfwSetWindowFocusCallback(window, windowFocus_callback);
+    //glfwSetWindowAspectRatio(window, 21, 9);
+
+     
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    // Setup Dear ImGui style
+    //ImGui::StyleColorsDark();
+    ImGui::StyleColorsLight();
+    // Setup Platform/Renderer backends
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 150");
+    // Our state
+    bool show_demo_window = true;
+    bool show_another_window = false;
+    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+
+
     if (!window)
     {
         glfwTerminate();
@@ -204,18 +237,64 @@ int main(int argc, char** argv)
     glGenBuffers(1, &EBO);
     glGenBuffers(1, &VBOMaterial);
 
+    glm::mat4 view = glm::mat4(1.0f);
+    SetupCamera(&view);
+
     GenerateShaderProgram(&shaderProgram);
     glm::mat4 trans = glm::mat4(1.0f);
-    trans = glm::rotate(trans, glm::radians(220.0f), glm::vec3(0,1,0));
+    trans = glm::rotate(trans, glm::radians(0.0f), glm::vec3(0,1,0));
 
+    unsigned int viewLoc = glGetUniformLocation(shaderProgram, "view");
+    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
-        glTransformArrays(&trans, &shaderProgram);
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+        if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)
+        {
+            ImGui_ImplGlfw_Sleep(10);
+            continue;
+        }
+
+        // Start the Dear ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
 
         // clear last frame
         glClearColor(0.0f,0.0f,0.0f,0.0f); 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        if (show_demo_window)
+            ImGui::ShowDemoWindow(&show_demo_window);
+
+        static float f = 0.0f;
+        static int counter = 0;
+
+        ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+        if(ImGui::TreeNode("Hierarchy"))
+        {
+            FbxNode *root = scen->GetRootNode();
+            RenderImGuiNodeHierarchy(root);
+            ImGui::TreePop();
+        }
+        ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
+        ImGui::Checkbox("Another Window", &show_another_window);
+        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+        ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+        if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+            counter++;
+        ImGui::SameLine();
+        ImGui::Text("counter = %d", counter);
+        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+        ImGui::End();
+
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+
+        glTransformArrays(&trans, &shaderProgram);
 
         GLenum error = glGetError();
         if (error != GL_NO_ERROR) {
@@ -247,9 +326,7 @@ int main(int argc, char** argv)
             //glDisableVertexAttribArray(1);
         }
 
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-         
+        ImGui::EndFrame();
         std::this_thread::sleep_for(std::chrono::milliseconds(1000/FPS));
     }
     glDeleteVertexArrays(1, &VAO);
@@ -334,6 +411,7 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
     std::cout << "node:" << node->GetName() << "type: " << AttributTypeToString[node->GetNodeAttribute()->GetAttributeType()] << std::endl;
     renderObject *rObj = new renderObject();
     rObj->id = index;
+    rObj->name = node->GetName();
     rObj->nodetype = node->GetNodeAttribute()->GetAttributeType();
 
     FbxMesh* mesh = node->GetMesh();
@@ -478,10 +556,27 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     {
         //would like to export thecurrent trans(form) matrix
     }
+    if(key == GLFW_KEY_F2 && (action == GLFW_PRESS))
+    {
+        glfwSetWindowAttrib(window, 0x0002000D, 0);
+    }
+    if(key == GLFW_KEY_F3 && (action == GLFW_PRESS))
+    {
+        glfwSetWindowAttrib(window, 0x0002000D, 1);
+    }
 }
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
     controller->zoomlevel = 1+(xoffset/50);
+}
+void windowFocus_callback(GLFWwindow* window, int focused)
+{
+    if(focused)
+    {
+        std::cout << "window is now focused" << std::endl;
+    }else{
+        std::cout << "window is not focused" << std::endl;
+    }
 }
 const GLchar* readFromFile(const GLchar* pathToFile)
 {
@@ -551,4 +646,35 @@ void GenerateShaderProgram(unsigned int *_shaderProgram)
     glDeleteShader(fragmentShader);
     
     glUseProgram(*_shaderProgram);
+}
+
+void SetupCamera(glm::mat4 *view)
+{
+    glm::vec3 cameraPos = glm::vec3(0.0f,0.0f,-3.0f);
+    glm::vec3 cameraTarget = glm::vec3(0.0f,0.0f,0.0f);
+    glm::vec3 cameraDirection = glm::normalize(cameraTarget-cameraPos);
+    
+    glm::vec3 up = glm::vec3(0.0f,1.0f,0.0f);
+    glm::vec3 cameraRight = glm::normalize(glm::cross(up, cameraDirection));
+    glm::vec3 cameraUp = glm::cross(cameraDirection, cameraRight);
+
+    //glm requires a position, target and up vector;
+    *view = glm::lookAt(cameraPos, cameraTarget, cameraUp);
+}
+
+void RenderImGuiNodeHierarchy(FbxNode * node)
+{
+    if(node->GetChildCount() > 0)
+    {
+        if(ImGui::TreeNode(node->GetName()))
+        {
+            for(unsigned int c = 0; c < node->GetChildCount(); ++c)
+            {
+                RenderImGuiNodeHierarchy(node->GetChild(c));
+            }
+            ImGui::TreePop();
+        }
+    }else{
+        ImGui::Text("%s", node->GetName());
+    }
 }
