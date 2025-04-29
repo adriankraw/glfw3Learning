@@ -115,8 +115,8 @@ void ImportMeshData(FbxNode* scen,  std::vector<renderObject>* rObj, int& index)
 
 //argv
 const std::string ArgvTrans = "-t";
-//const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
-const char* fbxFileLocation = "./models/untitled1.fbx";
+const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
+//const char* fbxFileLocation = "./models/untitled1.fbx";
 FbxControler *controller = new FbxControler();
 
 int main(int argc, char** argv)
@@ -192,6 +192,7 @@ int main(int argc, char** argv)
     
     FbxScene *scen = LoadFbxFile(*fbxFileLocation);
     int rObjCount = scen->GetNodeCount();
+    std::cout << "NodeCount: " << rObjCount << std::endl;
     //int rObjCount = scen->GetNodeCount();
     std::vector<renderObject> rObj;
     for (int i = 0; i < rObjCount; ++i)
@@ -264,7 +265,7 @@ void glTransformArrays(glm::mat4 *trans, unsigned int *shaderProgram)
 {
     if(controller->rotating && (controller->rotationX != 0 || controller->rotationY != 0 || controller->rotationZ != 0))
     {
-        *trans = glm::rotate(*trans, glm::radians(1.0f), glm::vec3(controller->rotationX,controller->rotationY,controller->rotationZ));
+        *trans = glm::rotate(*trans, glm::radians(2.0f), glm::vec3(controller->rotationX,controller->rotationY,controller->rotationZ));
         controller->rotationX = 0;
         controller->rotationY = 0;
         controller->rotationZ = 0;
@@ -313,98 +314,109 @@ FbxScene* LoadFbxFile(const char& pFile)
 
     lImporter->Import(scen);
     lImporter->Destroy();
-    FbxGeometryConverter converter(SDKManager);
-    converter.SplitMeshesPerMaterial(scen, true);
-    converter.Triangulate(scen, true, true);
 
+    FbxGeometryConverter converter(SDKManager);
+    bool isFine = converter.Triangulate(scen, true, false);
+    if (!isFine) std::cout << "Triangulate failed" << std::endl;
+    //isFine = converter.SplitMeshesPerMaterial(scen, true);
+    //if (!isFine) std::cout << "converter failed to split" << std::endl;
+    
     return scen;
 }
 void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& index)
 {
     if(node->GetMesh() == nullptr) 
     {
+        std::cout << "Not a mesh:"<< node->GetName() << std::endl;
         return;
     }
-
-    std::cout << "node:" << node->GetName() << ": " << AttributTypeToString[node->GetNodeAttribute()->GetAttributeType()] << std::endl;
+    std::cout << "----------------------" << std::endl;
+    std::cout << "node:" << node->GetName() << "type: " << AttributTypeToString[node->GetNodeAttribute()->GetAttributeType()] << std::endl;
     renderObject *rObj = new renderObject();
     rObj->id = index;
-
     rObj->nodetype = node->GetNodeAttribute()->GetAttributeType();
-    if(rObj->nodetype == FbxNodeAttribute::eMesh)
+
+    FbxMesh* mesh = node->GetMesh();
+    std::cout << "mesh:" << mesh->GetName() << std::endl;
+    std::cout << "layer:" << mesh->GetLayerCount() << std::endl;
+
+    for(int v = 0;v < mesh->GetControlPointsCount(); ++v)
     {
-        std::cout << "nodeName " << node->GetName() << std::endl;
-        //FbxMesh* mesh = node->GetMesh()->GetElementVisibility();
-        FbxMesh* mesh = node->GetMesh();
-        std::cout << "mesh:" << mesh->GetName() << std::endl;
+        FbxVector4 vec = mesh->GetControlPointAt(v);
+        rObj->verticies.push_back(vec.mData[0]);
+        rObj->verticies.push_back(vec.mData[1]);
+        rObj->verticies.push_back(vec.mData[2]);
+    }
 
-        int verticiesCount = mesh->GetPolygonCount();
-        for(int v = 0;v < mesh->GetControlPointsCount(); ++v)
+    int verticiesCount = mesh->GetPolygonCount();
+    for(int p = 0; p < verticiesCount; ++p)
+    {
+        for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
         {
-            FbxVector4 vec = mesh->GetControlPointAt(v);
-            rObj->verticies.push_back(vec.mData[0]);
-            rObj->verticies.push_back(vec.mData[1]);
-            rObj->verticies.push_back(vec.mData[2]);
+            int vertIndies = mesh->GetPolygonVertex(p, poligonvertex);
+            rObj->vertIndices.push_back(vertIndies);
         }
-        std::cout << rObj->verticies.size() << std::endl;
+    }
+    std::cout << "mat Count" << mesh->GetElementMaterialCount() << std::endl;
 
-        for(int p = 0; p < verticiesCount; ++p)
+    for (int m = 0; m < mesh->GetElementMaterialCount();++m)
+    {
+        FbxGeometryElementMaterial* lMaterialElement = mesh->GetElementMaterial(m);
+
+        switch(lMaterialElement->GetMappingMode())
         {
-            for(int poligonvertex = 0; poligonvertex < mesh->GetPolygonSize(p); ++poligonvertex)
+            case fbxsdk::FbxLayerElement::EMappingMode::eAllSame:
             {
-                int vertIndies = mesh->GetPolygonVertex(p, poligonvertex);
-                rObj->vertIndices.push_back(vertIndies);
-            }
-        }
-        std::cout << rObj->vertIndices.size() << std::endl;
-        std::cout << "mat Count" << node->GetMaterialCount() << std::endl;
-
-        for (int m = 0; m < mesh->GetElementMaterialCount();++m)
-        {
-            FbxGeometryElementMaterial* lMaterialElement = mesh->GetElementMaterial(m);
-            FbxSurfaceMaterial* surfaceMaterial = node->GetMaterial(m);
-
-            switch(lMaterialElement->GetMappingMode())
-            {
-                case fbxsdk::FbxLayerElement::EMappingMode::eAllSame:
+                for(unsigned int mat = 0; mat < mesh->GetPolygonCount(); ++mat)
                 {
-                    for(unsigned int mat = 0; mat < mesh->GetPolygonCount(); ++mat)
-                    {
-                        const int lMaterialIndex = lMaterialElement->GetIndexArray().GetAt(mat);
-                        FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialIndex);
-                        FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
-                        rObj->diffuse.emplace_back(diffColor[0]);
-                        rObj->diffuse.emplace_back(diffColor[1]);
-                        rObj->diffuse.emplace_back(diffColor[2]);
-                    }
+                    const int lMaterialIndex = lMaterialElement->GetIndexArray().GetAt(mat);
+                    FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialIndex);
+                    FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
+                    rObj->diffuse.emplace_back(diffColor[0]);
+                    rObj->diffuse.emplace_back(diffColor[1]);
+                    rObj->diffuse.emplace_back(diffColor[2]);
+                }
+                
+                std::cout<< "----------All Same  " << rObj->diffuse.size()/3 << std::endl;
+            }
+                break;
+            case fbxsdk::FbxLayerElement::EMappingMode::eByEdge:
+                break;
+            case fbxsdk::FbxLayerElement::EMappingMode::eByControlPoint:
+                std::cout << "eByControlPoints found" << "\n";
+                break;
+            case fbxsdk::FbxLayerElement::EMappingMode::eByPolygon:
+            {
+                rObj->diffuse.resize(mesh->GetControlPointsCount() * 3, 0.0f);
+                for(unsigned int pol = 0; pol < mesh->GetPolygonCount(); ++pol)
+                {
+                    int matIndex = 0;
                     
-                    std::cout<< "----------All Same  " << rObj->diffuse.size()/3 << std::endl;
-                }
-                    break;
-                case fbxsdk::FbxLayerElement::EMappingMode::eByEdge:
-                    break;
-                case fbxsdk::FbxLayerElement::EMappingMode::eByControlPoint:
-                    std::cout << "eByControlPoints found" << "\n";
-                    break;
-                case fbxsdk::FbxLayerElement::EMappingMode::eByPolygon:
-                {
-                    for(unsigned int mat = 0; mat < mesh->GetPolygonCount(); ++mat)
+                    if (lMaterialElement->GetReferenceMode() == FbxGeometryElement::eDirect)
                     {
-                        const int lMaterialIndex = lMaterialElement->GetIndexArray().GetAt(mat);
-                        FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialIndex);
-                        FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
-                        rObj->diffuse.emplace_back(diffColor[0]);
-                        rObj->diffuse.emplace_back(diffColor[1]);
-                        rObj->diffuse.emplace_back(diffColor[2]);
+                        matIndex = pol;
+                    }else if (lMaterialElement->GetReferenceMode() == FbxGeometryElement::eIndexToDirect)
+                    {
+                        matIndex = lMaterialElement->GetIndexArray().GetAt(pol);
                     }
-                    std::cout<< "--------By Poligon  " << rObj->diffuse.size()/3 << std::endl;
+                    FbxSurfaceMaterial* lMaterial = node->GetMaterial(matIndex);
+                    FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
+
+                    for(unsigned int vert = 0; vert < mesh->GetPolygonSize(pol); ++vert)
+                    {
+                        int cpIndex = mesh->GetPolygonVertex(pol, vert);
+                        rObj->diffuse[cpIndex*3 + 0] = diffColor[0];
+                        rObj->diffuse[cpIndex*3 + 1] = diffColor[1];
+                        rObj->diffuse[cpIndex*3 + 2] = diffColor[2];
+                    }
                 }
-                    break;
-                case fbxsdk::FbxLayerElement::EMappingMode::eByPolygonVertex:
-                    break;
-                case fbxsdk::FbxLayerElement::EMappingMode::eNone:
-                    break;
+                std::cout<< "--------By Poligon  " << rObj->diffuse.size()/3 << std::endl;
             }
+                break;
+            case fbxsdk::FbxLayerElement::EMappingMode::eByPolygonVertex:
+                break;
+            case fbxsdk::FbxLayerElement::EMappingMode::eNone:
+                break;
         }
 
     renderList->emplace_back(*rObj);
