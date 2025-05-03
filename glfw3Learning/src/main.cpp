@@ -55,7 +55,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void windowFocus_callback(GLFWwindow* window, int focused);
 //shader
 const GLchar* readFromFile(const GLchar* pathToFile);
-void GenerateShaderProgram(unsigned int *_shaderProgram);
+void GenerateShaderProgram(unsigned int &_shaderProgram);
 std::string shadercontent = "";
 unsigned int vertexShader,fragmentShader;
 
@@ -120,6 +120,28 @@ const std::string AttributTypeToString[]  = {
         "eCachedEffect",
         "eLine"
 };
+
+GLenum glCheckError_(const char *file, int line, const char * function)
+{
+    GLenum errorCode;
+    while ((errorCode = glGetError()) != GL_NO_ERROR)
+    {
+        std::string error;
+        switch (errorCode)
+        {
+            case GL_INVALID_ENUM:                  error = "INVALID_ENUM"; break;
+            case GL_INVALID_VALUE:                 error = "INVALID_VALUE"; break;
+            case GL_INVALID_OPERATION:             error = "INVALID_OPERATION"; break;
+            case GL_OUT_OF_MEMORY:                 error = "OUT_OF_MEMORY"; break;
+            case GL_INVALID_FRAMEBUFFER_OPERATION: error = "INVALID_FRAMEBUFFER_OPERATION"; break;
+            default: error = "UNKNOWN"; break;
+        }
+        std::cout << error << " | " << file << ":" << function << " (" << line << ")" << std::endl;
+    }
+    return errorCode;
+}
+//#define glCheckError() glCheckError_(__FILE__, __LINE__) 
+#define glCheckError() glCheckError_(__FILE__, __LINE__, __FUNCTION__) 
 
 FbxScene* LoadFbxFile(const char& pFile);
 void ImportMeshData(FbxNode* scen,  std::vector<renderObject>* rObj, int& index);
@@ -224,6 +246,7 @@ int main(int argc, char** argv)
     int nrAttributes;
     glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nrAttributes);
     glEnable(GL_DEPTH_TEST);
+    glCheckError();
 
     glGenFramebuffers(1, &fbo);
     
@@ -237,6 +260,8 @@ int main(int argc, char** argv)
     glBindTexture(GL_TEXTURE_2D, 0);
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mainRenderTexture, 0);
+    glCheckError();
+
     FbxScene *scen = LoadFbxFile(*fbxFileLocation);
     int rObjCount = scen->GetNodeCount();
     std::cout << "NodeCount: " << rObjCount << std::endl;
@@ -250,11 +275,14 @@ int main(int argc, char** argv)
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
     glGenBuffers(1, &VBOMaterial);
+    glCheckError();
 
     glm::mat4 view = glm::mat4(1.0f);
     SetupCamera(&view);
+    glCheckError();
 
-    GenerateShaderProgram(&shaderProgram);
+    GenerateShaderProgram(shaderProgram);
+    glCheckError();
     glm::mat4 trans = glm::mat4(1.0f);
     trans = glm::rotate(trans, glm::radians(0.0f), glm::vec3(0,1,0));
     glm::vec3 transposition = glm::vec3(0.5f,-1.0f,0.0f);
@@ -267,6 +295,7 @@ int main(int argc, char** argv)
     {
         glfwSwapBuffers(window);
         glfwPollEvents();
+        glCheckError();
         if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)
         {
             ImGui_ImplGlfw_Sleep(10);
@@ -281,12 +310,13 @@ int main(int argc, char** argv)
         // clear last frame
         glClearColor(0.0f,0.0f,0.0f,0.0f); 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glCheckError();
 
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
 
-        static float f = 0.0f;
-        static int counter = 0;
+        float f = 0.0f;
+        int counter = 0;
 
         if(imGuiWindowHierarchy)
         {
@@ -343,10 +373,7 @@ int main(int argc, char** argv)
 
         glTransformArrays(&trans, &shaderProgram);
 
-        GLenum error = glGetError();
-        if (error != GL_NO_ERROR) {
-            std::cout << "OpenGL error: " << error << std::endl;
-        }
+        glCheckError();
         if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         {
             std::cout << "Framebuffer not Complete" << std::endl;
@@ -359,6 +386,8 @@ int main(int argc, char** argv)
 
         glBindTexture(GL_TEXTURE_2D, mainRenderTexture);
         glBindVertexArray(VAO);
+
+        glCheckError();
         for (int i = 0; i < rObjCount; ++i)
         {
             if (rObj[i].nodetype !=FbxNodeAttribute::eMesh) continue;
@@ -657,7 +686,7 @@ const GLchar* readFromFile(const GLchar* pathToFile)
     return shadercontent.c_str();
 }
 
-void GenerateShaderProgram(unsigned int *_shaderProgram)
+void GenerateShaderProgram(unsigned int &_shaderProgram)
 {
     
     vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -688,22 +717,22 @@ void GenerateShaderProgram(unsigned int *_shaderProgram)
         glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
         std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
     }
-    *_shaderProgram = glCreateProgram();
+    _shaderProgram = glCreateProgram();
 
-    glAttachShader(*_shaderProgram, vertexShader);
-    glAttachShader(*_shaderProgram, fragmentShader);
-    glLinkProgram(*_shaderProgram);
+    glAttachShader(_shaderProgram, vertexShader);
+    glAttachShader(_shaderProgram, fragmentShader);
+    glLinkProgram(_shaderProgram);
     
-    glGetShaderiv(*_shaderProgram, GL_LINK_STATUS, &sucess);
+    glGetProgramiv(_shaderProgram, GL_LINK_STATUS, &sucess);
     if(!sucess)
     {
-        glGetShaderInfoLog(*_shaderProgram, 512, NULL, infoLog);
+        glGetProgramInfoLog(_shaderProgram, 512, NULL, infoLog);
         std::cout << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
     }
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
     
-    glUseProgram(*_shaderProgram);
+    glUseProgram(_shaderProgram);
 }
 
 void SetupCamera(glm::mat4 *view)
