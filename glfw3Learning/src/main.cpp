@@ -151,7 +151,7 @@ int main(int argc, char** argv)
         glfwWindowHint (GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
         glfwWindowHint (GLFW_DECORATED, GLFW_FALSE);
         glfwWindowHint (GLFW_FLOATING, GLFW_TRUE);
-        glfwWindowHint (0x0002000D, 1); // -> GLFW_MOUSE_PASSTHROUGH
+        glfwWindowHint (0x0002000D, 0); // -> GLFW_MOUSE_PASSTHROUGH
     }
 
     int count;
@@ -181,6 +181,7 @@ int main(int argc, char** argv)
     unsigned int VBOMaterial;
     unsigned int VAO;
     unsigned int shaderProgram = 0;
+    unsigned int fbo; 
     
     glfwSetErrorCallback(error_callback);
 
@@ -207,7 +208,8 @@ int main(int argc, char** argv)
     ImGui_ImplOpenGL3_Init("#version 150");
     // Our state
     bool show_demo_window = true;
-    bool show_another_window = false;
+    bool imGuiWindowHierarchy = true;
+    bool imGuiWindowTransform = true;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
 
@@ -222,7 +224,19 @@ int main(int argc, char** argv)
     int nrAttributes;
     glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nrAttributes);
     glEnable(GL_DEPTH_TEST);
+
+    glGenFramebuffers(1, &fbo);
     
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    unsigned int mainRenderTexture;
+    glGenTextures(1, &mainRenderTexture);
+    glBindTexture(GL_TEXTURE_2D, mainRenderTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, mode->width/2, mode->height/2, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mainRenderTexture, 0);
     FbxScene *scen = LoadFbxFile(*fbxFileLocation);
     int rObjCount = scen->GetNodeCount();
     std::cout << "NodeCount: " << rObjCount << std::endl;
@@ -243,6 +257,8 @@ int main(int argc, char** argv)
     GenerateShaderProgram(&shaderProgram);
     glm::mat4 trans = glm::mat4(1.0f);
     trans = glm::rotate(trans, glm::radians(0.0f), glm::vec3(0,1,0));
+    glm::vec3 transposition = glm::vec3(0.5f,-1.0f,0.0f);
+    glm::vec3 transRotation = glm::vec3(0.5f,-1.0f,0.0f);
 
     unsigned int viewLoc = glGetUniformLocation(shaderProgram, "view");
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -272,18 +288,49 @@ int main(int argc, char** argv)
         static float f = 0.0f;
         static int counter = 0;
 
-        ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-        if(ImGui::TreeNode("Hierarchy"))
+        if(imGuiWindowHierarchy)
         {
-            FbxNode *root = scen->GetRootNode();
-            RenderImGuiNodeHierarchy(root);
-            ImGui::TreePop();
+            //ImGui::SetNextWindowPos(ImVec2(0,0));
+            //ImGui::SetNextWindowSizeConstraints(ImVec2(50.0f,400.f), ImVec2(-1,-1));
+            ImGui::Begin("Hierarchy");                          
+            ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+            if(ImGui::TreeNode("Hierarchy"))
+            {
+                FbxNode *root = scen->GetRootNode();
+                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+                RenderImGuiNodeHierarchy(root);
+                ImGui::TreePop();
+            }
+            ImGui::End();
         }
-        ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-        ImGui::Checkbox("Another Window", &show_another_window);
-        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-        ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
-        if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+        if(imGuiWindowTransform)
+        {
+            //ImGui::SetNextWindowPos(ImVec2(0,0));
+            //ImGui::SetNextWindowSizeConstraints(ImVec2(50.0f,200.f), ImVec2(-1,-1));
+            ImGui::Begin("Transform");
+            ImGui::Spacing();
+            ImGui::InputFloat3("Position",(float*)&transposition);
+            unsigned int TranspositionLoc = glGetUniformLocation(shaderProgram, "transposition");
+            glUniform3f(TranspositionLoc, transposition.x, transposition.y, transposition.z);
+            ImGui::Spacing();
+            ImGui::InputFloat3("Rotation",(float*)&transRotation);
+            //unsigned int TransRotationLoc = glGetUniformLocation(shaderProgram, "transrotation");
+            //glUniform3f(TransRotationLoc, transRotation.x, transRotation.y, transRotation.z);
+            ImGui::End();
+        }
+        {
+            ImGui::Begin("Render");
+            ImGui::Image((ImTextureID)mainRenderTexture, ImVec2(mode->width/2.0f,mode->height/2.0f), ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::End();
+        }
+
+        ImGui::Begin("Settings");
+        ImGui::Checkbox("Hierarchy", &imGuiWindowHierarchy);     
+        ImGui::Checkbox("Transform", &imGuiWindowTransform);     
+        ImGui::Checkbox("Demo Window", &show_demo_window);     
+        ImGui::SliderFloat("float", &f, 0.0f, 1.0f); 
+        ImGui::ColorEdit3("clear color", (float*)&clear_color); 
+        if (ImGui::Button("Button"))                           
             counter++;
         ImGui::SameLine();
         ImGui::Text("counter = %d", counter);
@@ -300,11 +347,22 @@ int main(int argc, char** argv)
         if (error != GL_NO_ERROR) {
             std::cout << "OpenGL error: " << error << std::endl;
         }
+        if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        {
+            std::cout << "Framebuffer not Complete" << std::endl;
+        }
+        glViewport(0, 0, mode->width/2, mode->height/2);
+        glUseProgram(shaderProgram);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glClearColor(0.0f,0.0f,0.0f,0.0f); 
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glBindTexture(GL_TEXTURE_2D, mainRenderTexture);
+        glBindVertexArray(VAO);
         for (int i = 0; i < rObjCount; ++i)
         {
             if (rObj[i].nodetype !=FbxNodeAttribute::eMesh) continue;
 
-            glBindVertexArray(VAO);
             glBindBuffer(GL_ARRAY_BUFFER, VBO);
             glBufferData(GL_ARRAY_BUFFER, rObj[i].verticies.size() * sizeof(float), &rObj[i].verticies[0], GL_STATIC_DRAW);
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
@@ -318,13 +376,13 @@ int main(int argc, char** argv)
             glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
             glEnableVertexAttribArray(1);
             
-            glBindVertexArray(0);
-            glUseProgram(shaderProgram);
-            glBindVertexArray(VAO);
             glDrawElements(GL_TRIANGLES, rObj[i].vertIndices.size(), GL_UNSIGNED_INT, 0);
             //glDisableVertexAttribArray(0);
             //glDisableVertexAttribArray(1);
         }
+        glBindVertexArray(0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindTexture(GL_TEXTURE_2D, 0);
 
         ImGui::EndFrame();
         std::this_thread::sleep_for(std::chrono::milliseconds(1000/FPS));
@@ -333,6 +391,7 @@ int main(int argc, char** argv)
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &VBOMaterial);
     glDeleteProgram(shaderProgram);
+    glDeleteFramebuffers(1, &fbo);
     
     glfwTerminate();
     return 0;
@@ -404,7 +463,6 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
 {
     if(node->GetMesh() == nullptr) 
     {
-        std::cout << "Not a mesh:"<< node->GetName() << std::endl;
         return;
     }
     std::cout << "----------------------" << std::endl;
@@ -664,9 +722,16 @@ void SetupCamera(glm::mat4 *view)
 
 void RenderImGuiNodeHierarchy(FbxNode * node)
 {
+    std::string c = node->GetName(); 
+    if(node->GetNodeAttribute())
+    {
+        c.append(" => ");
+        c.append(AttributTypeToString[node->GetNodeAttribute()->GetAttributeType()]);
+    }
+    
     if(node->GetChildCount() > 0)
     {
-        if(ImGui::TreeNode(node->GetName()))
+        if(ImGui::TreeNode(c.c_str()))
         {
             for(unsigned int c = 0; c < node->GetChildCount(); ++c)
             {
@@ -675,6 +740,6 @@ void RenderImGuiNodeHierarchy(FbxNode * node)
             ImGui::TreePop();
         }
     }else{
-        ImGui::Text("%s", node->GetName());
+        ImGui::Text("%s", c.c_str());
     }
 }

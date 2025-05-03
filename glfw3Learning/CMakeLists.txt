@@ -22,7 +22,19 @@ set(Homebrew /opt/homebrew/opt)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-
+set(IMGUI 
+        extern/imgui/imgui_impl_opengl3.h
+        extern/imgui/imgui_impl_opengl3.cpp
+        extern/imgui/imgui_impl_opengl3_loader.h
+        extern/imgui/imgui_impl_glfw.h
+        extern/imgui/imgui_impl_glfw.cpp
+        extern/imgui/imgui.h
+        extern/imgui/imgui.cpp
+        extern/imgui/imgui_draw.cpp
+        extern/imgui/imgui_tables.cpp
+        extern/imgui/imgui_widgets.cpp
+        extern/imgui/imgui_demo.cpp
+)
 
 add_library(libz STATIC IMPORTED)
 set_target_properties(libz PROPERTIES
@@ -36,7 +48,7 @@ set_target_properties(fbxsdk PROPERTIES
 	INTERFACE_INCLUDE_DIRECTORIES "${pubApp}/Autodesk/FBX SDK/2020.3.7/include"
 )
 
-add_executable(glfw3Learning ./src/main.cpp)
+add_executable(glfw3Learning ./src/main.cpp ${IMGUI})
 
 set_property(TARGET glfw3Learning PROPERTY CXX_STANDARD 17)
 
@@ -45,6 +57,7 @@ target_include_directories(glfw3Learning PRIVATE ${Homebrew}/libiconv/include)
 target_include_directories(glfw3Learning PRIVATE ./include)
 target_include_directories(glfw3Learning PRIVATE ${pubApp}/Autodesk/FBX\ SDK/2020.3.7/include)
 target_include_directories(glfw3Learning PRIVATE ${Homebrew}/libxml2/include)
+target_include_directories(glfw3Learning PRIVATE ./extern/imgui)
 #target_include_directories(glfw3Learning PRIVATE ${pubinclude}/include/glfw)
 
 
