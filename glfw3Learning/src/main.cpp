@@ -8,6 +8,7 @@
 #include "glm/trigonometric.hpp"
 #include <cstddef>
 #include <cstdio>
+#include <iterator>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -80,10 +81,10 @@ public:
     fbxsdk::FbxNodeAttribute::EType nodetype = fbxsdk::FbxNodeAttribute::EType::eNull;
     glm::mat4 translation;
     glm::mat4 rotation;
-    std::vector<renderPoly> polies;
     std::vector<unsigned int> vertIndices;
     std::vector<float> verticies;
     std::vector<float> diffuse;
+    std::vector<float> normal;
 };
 
 class FbxControler
@@ -203,7 +204,8 @@ int main(int argc, char** argv)
     unsigned int VBOMaterial;
     unsigned int VAO;
     unsigned int shaderProgram = 0;
-    unsigned int fbo; 
+    unsigned int fbo;
+    unsigned int rbo;
     
     glfwSetErrorCallback(error_callback);
 
@@ -232,6 +234,7 @@ int main(int argc, char** argv)
     bool show_demo_window = true;
     bool imGuiWindowHierarchy = true;
     bool imGuiWindowTransform = true;
+    bool imGuiWindowRender = true;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
 
@@ -258,8 +261,18 @@ int main(int argc, char** argv)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glBindTexture(GL_TEXTURE_2D, 0);
-
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mainRenderTexture, 0);
+
+    glGenRenderbuffers(1, &rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, mode->width/2, mode->height/2);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete" << std::endl;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     glCheckError();
 
     FbxScene *scen = LoadFbxFile(*fbxFileLocation);
@@ -348,6 +361,7 @@ int main(int argc, char** argv)
             //glUniform3f(TransRotationLoc, transRotation.x, transRotation.y, transRotation.z);
             ImGui::End();
         }
+        if(imGuiWindowRender)
         {
             ImGui::Begin("Render");
             ImGui::Image((ImTextureID)mainRenderTexture, ImVec2(mode->width/2.0f,mode->height/2.0f), ImVec2(0, 1), ImVec2(1, 0));
@@ -356,7 +370,8 @@ int main(int argc, char** argv)
 
         ImGui::Begin("Settings");
         ImGui::Checkbox("Hierarchy", &imGuiWindowHierarchy);     
-        ImGui::Checkbox("Transform", &imGuiWindowTransform);     
+        ImGui::Checkbox("Transform", &imGuiWindowTransform); 
+        ImGui::Checkbox("Render in Window", &imGuiWindowRender); 
         ImGui::Checkbox("Demo Window", &show_demo_window);     
         ImGui::SliderFloat("float", &f, 0.0f, 1.0f); 
         ImGui::ColorEdit3("clear color", (float*)&clear_color); 
@@ -378,13 +393,21 @@ int main(int argc, char** argv)
         {
             std::cout << "Framebuffer not Complete" << std::endl;
         }
-        glViewport(0, 0, mode->width/2, mode->height/2);
+        if(imGuiWindowRender)
+        {
+            glViewport(0, 0, mode->width/2, mode->height/2);
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+            glBindTexture(GL_TEXTURE_2D, mainRenderTexture);
+            glClearColor(clear_color.x,clear_color.y,clear_color.z, clear_color.w); 
+        }else{
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0,0,mode->width,mode->height);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glClearColor(0.0f,0.0f,0.0f,0.0f);
+        }
         glUseProgram(shaderProgram);
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        glClearColor(0.0f,0.0f,0.0f,0.0f); 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glBindTexture(GL_TEXTURE_2D, mainRenderTexture);
         glBindVertexArray(VAO);
 
         glCheckError();
@@ -401,9 +424,13 @@ int main(int argc, char** argv)
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, rObj[i].vertIndices.size() * sizeof(unsigned int), &rObj[i].vertIndices[0], GL_STATIC_DRAW);
 
             glBindBuffer(GL_ARRAY_BUFFER, VBOMaterial);    
-            glBufferData(GL_ARRAY_BUFFER, rObj[i].diffuse.size() * sizeof(float), &rObj[i].diffuse[0], GL_STATIC_DRAW);
+            glBufferData(GL_ARRAY_BUFFER, (rObj[i].diffuse.size() + rObj[i].normal.size()) * sizeof(float)  , 0, GL_STATIC_DRAW);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, rObj[i].normal.size() * sizeof(float), &rObj[i].diffuse[0]);
+            glBufferSubData(GL_ARRAY_BUFFER, rObj[i].diffuse.size() * sizeof(float), rObj[i].normal.size() * sizeof(float), &rObj[i].normal[0]);
             glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
             glEnableVertexAttribArray(1);
+            glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)(rObj[i].diffuse.size()*sizeof(float)));
+            glEnableVertexAttribArray(2);
             
             glDrawElements(GL_TRIANGLES, rObj[i].vertIndices.size(), GL_UNSIGNED_INT, 0);
             //glDisableVertexAttribArray(0);
@@ -532,16 +559,29 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
         {
             case fbxsdk::FbxLayerElement::EMappingMode::eAllSame:
             {
-                for(unsigned int mat = 0; mat < mesh->GetPolygonCount(); ++mat)
+                rObj->diffuse.resize(mesh->GetControlPointsCount() * 3, 0.0f);
+                rObj->normal.resize(mesh->GetControlPointsCount() * 3, 0.0f);
+
+                for(unsigned int pol = 0; pol < mesh->GetPolygonCount(); ++pol)
                 {
-                    const int lMaterialIndex = lMaterialElement->GetIndexArray().GetAt(mat);
+                    const int lMaterialIndex = lMaterialElement->GetIndexArray().GetAt(pol);
                     FbxSurfaceMaterial* lMaterial = node->GetMaterial(lMaterialIndex);
                     FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
                     rObj->diffuse.emplace_back(diffColor[0]);
                     rObj->diffuse.emplace_back(diffColor[1]);
                     rObj->diffuse.emplace_back(diffColor[2]);
+
+                    for(unsigned int vert = 0; vert < mesh->GetPolygonSize(pol); ++vert)
+                    {
+                        int cpIndex = mesh->GetPolygonVertex(pol, vert);
+
+                        FbxVector4 cpNormal;
+                        mesh->GetPolygonVertexNormal(pol, vert, cpNormal);
+                        rObj->normal[cpIndex*3+0] = cpNormal[0];
+                        rObj->normal[cpIndex*3+1] = cpNormal[1];
+                        rObj->normal[cpIndex*3+2] = cpNormal[2];
+                    }
                 }
-                
                 std::cout<< "----------All Same  " << rObj->diffuse.size()/3 << std::endl;
             }
                 break;
@@ -553,6 +593,7 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
             case fbxsdk::FbxLayerElement::EMappingMode::eByPolygon:
             {
                 rObj->diffuse.resize(mesh->GetControlPointsCount() * 3, 0.0f);
+                rObj->normal.resize(mesh->GetControlPointsCount() * 3, 0.0f);
                 for(unsigned int pol = 0; pol < mesh->GetPolygonCount(); ++pol)
                 {
                     int matIndex = 0;
@@ -566,6 +607,7 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
                     }
                     FbxSurfaceMaterial* lMaterial = node->GetMaterial(matIndex);
                     FbxDouble3 diffColor = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sDiffuse));
+                    //FbxDouble3 normalMap    = FbxPropertyT<FbxDouble3>(lMaterial->FindProperty(FbxSurfaceMaterial::sNormalMap));
 
                     for(unsigned int vert = 0; vert < mesh->GetPolygonSize(pol); ++vert)
                     {
@@ -573,6 +615,12 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
                         rObj->diffuse[cpIndex*3 + 0] = diffColor[0];
                         rObj->diffuse[cpIndex*3 + 1] = diffColor[1];
                         rObj->diffuse[cpIndex*3 + 2] = diffColor[2];
+
+                        FbxVector4 cpNormal;
+                        mesh->GetPolygonVertexNormal(pol, vert, cpNormal);
+                        rObj->normal[cpIndex*3+0] = cpNormal[0];
+                        rObj->normal[cpIndex*3+1] = cpNormal[1];
+                        rObj->normal[cpIndex*3+2] = cpNormal[2];
                     }
                 }
                 std::cout<< "--------By Poligon  " << rObj->diffuse.size()/3 << std::endl;
