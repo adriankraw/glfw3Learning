@@ -1,6 +1,10 @@
 //opengl
+#include "fbxsdk/core/math/fbxvector2.h"
 #include "fbxsdk/scene/geometry/fbxlayer.h"
 #include "fbxsdk/scene/geometry/fbxnode.h"
+#include "fbxsdk/scene/shading/fbxfiletexture.h"
+#include "fbxsdk/scene/shading/fbxtexture.h"
+#include "glm/detail/qualifier.hpp"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/ext/vector_float3.hpp"
@@ -66,13 +70,6 @@ void SetupCamera(glm::mat4 *view);
 void glTransformArrays(glm::mat4 *trans, unsigned int *shaderProgram);
 
 //fbx
-class renderPoly
-{
-public:
-    unsigned int id;
-    std::vector<unsigned int> indices;
-    renderPoly(int _id) {id = _id;};
-};
 class renderObject
 {
 public:
@@ -87,6 +84,26 @@ public:
     std::vector<float> normal;
 };
 
+class GameObject
+{
+public:
+    unsigned int renderOrder;
+    unsigned int rObjCount;
+    glm::vec3 transform;
+    glm::vec3 rotation;
+    glm::vec3 scale;
+    std::vector<renderObject> rObjects;
+    GameObject(int _renderOrder, glm::vec3 _trans, glm::vec3 _rot, glm::vec3 _scale) 
+    {
+        renderOrder = _renderOrder;
+        transform = _trans;
+        rotation = _rot;
+        scale = _scale;
+        rObjCount = 0;
+    }
+};
+
+//currently used for handling keyboardinput
 class FbxControler
 {
     public:
@@ -151,6 +168,7 @@ void RenderImGuiNodeHierarchy(FbxNode * node);
 
 //argv
 const std::string ArgvTrans = "-t";
+const char* fbxGroundLocation = "./models/DefaultGround.fbx";
 const char* fbxFileLocation = "./models/KitFoxChar1.fbx";
 //const char* fbxFileLocation = "./models/untitled1.fbx";
 FbxControler *controller = new FbxControler();
@@ -169,7 +187,7 @@ int main(int argc, char** argv)
     glfwWindowHint (GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     //do an if argv contains -t 
-    if(argc > 1 && ArgvTrans.compare(argv[1])==0)
+    if((argc > 1 && ArgvTrans.compare(argv[1])==0) || true)
     {
         glfwWindowHint (GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
         glfwWindowHint (GLFW_DECORATED, GLFW_FALSE);
@@ -275,15 +293,27 @@ int main(int argc, char** argv)
 
     glCheckError();
 
-    FbxScene *scen = LoadFbxFile(*fbxFileLocation);
-    int rObjCount = scen->GetNodeCount();
-    std::cout << "NodeCount: " << rObjCount << std::endl;
-    //int rObjCount = scen->GetNodeCount();
-    std::vector<renderObject> rObj;
-    for (int i = 0; i < rObjCount; ++i)
+    std::vector<GameObject> gObj;
+    
+    gObj.emplace_back(GameObject(1, glm::vec3(0,0,0), glm::vec3(0,0,0), glm::vec3(1,1,1)));
+
+    FbxScene *Groundscen = LoadFbxFile(*fbxGroundLocation);
+    gObj.back().rObjCount = Groundscen->GetNodeCount();
+    std::cout << "NodeCount: " << gObj.back().rObjCount << std::endl;
+    for (int i = 0; i < gObj.back().rObjCount; ++i)
     {
-        ImportMeshData( scen->GetNode(i), &rObj, i);
+        ImportMeshData( Groundscen->GetNode(i), &(gObj.back().rObjects), i);
     }
+
+    gObj.emplace_back(GameObject(1, glm::vec3(0,0,0), glm::vec3(0,0,0), glm::vec3(1,1,1)));
+    FbxScene *scen = LoadFbxFile(*fbxFileLocation);
+    gObj.back().rObjCount = scen->GetNodeCount();
+    std::cout << "NodeCount: " << gObj.back().rObjCount << std::endl;
+    for (int i = 0; i < gObj.back().rObjCount; ++i)
+    {
+        ImportMeshData( scen->GetNode(i), &(gObj.back().rObjects), i);
+    }
+
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
@@ -297,9 +327,9 @@ int main(int argc, char** argv)
     GenerateShaderProgram(shaderProgram);
     glCheckError();
     glm::mat4 trans = glm::mat4(1.0f);
-    trans = glm::rotate(trans, glm::radians(0.0f), glm::vec3(0,1,0));
-    glm::vec3 transposition = glm::vec3(0.5f,-1.0f,0.0f);
-    glm::vec3 transRotation = glm::vec3(0.5f,-1.0f,0.0f);
+    glm::vec3 transposition = glm::vec3(0.0f, 0.0f, -1.0f);
+    glm::vec3 transRotation = glm::vec3(-1.0f, 0.0f, 0.0f);
+    glm::vec3 transScaling = glm::vec3(0.5f, 0.5f, 0.5f);
 
     unsigned int viewLoc = glGetUniformLocation(shaderProgram, "view");
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
@@ -309,11 +339,6 @@ int main(int argc, char** argv)
         glfwSwapBuffers(window);
         glfwPollEvents();
         glCheckError();
-        if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)
-        {
-            ImGui_ImplGlfw_Sleep(10);
-            continue;
-        }
 
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
@@ -331,6 +356,7 @@ int main(int argc, char** argv)
         float f = 0.0f;
         int counter = 0;
 
+        /*
         if(imGuiWindowHierarchy)
         {
             //ImGui::SetNextWindowPos(ImVec2(0,0));
@@ -345,7 +371,7 @@ int main(int argc, char** argv)
                 ImGui::TreePop();
             }
             ImGui::End();
-        }
+        }*/
         if(imGuiWindowTransform)
         {
             //ImGui::SetNextWindowPos(ImVec2(0,0));
@@ -357,8 +383,12 @@ int main(int argc, char** argv)
             glUniform3f(TranspositionLoc, transposition.x, transposition.y, transposition.z);
             ImGui::Spacing();
             ImGui::InputFloat3("Rotation",(float*)&transRotation);
-            //unsigned int TransRotationLoc = glGetUniformLocation(shaderProgram, "transrotation");
-            //glUniform3f(TransRotationLoc, transRotation.x, transRotation.y, transRotation.z);
+            unsigned int TransRotationLoc = glGetUniformLocation(shaderProgram, "transrotation");
+            glUniform3f(TransRotationLoc, transRotation.x, transRotation.y, transRotation.z);
+            ImGui::Spacing();
+            ImGui::InputFloat3("Scale",(float*)&transScaling);
+            unsigned int TransScalingLoc = glGetUniformLocation(shaderProgram, "transscaling");
+            glUniform3f(TransScalingLoc, transScaling.x, transScaling.y, transScaling.z);
             ImGui::End();
         }
         if(imGuiWindowRender)
@@ -385,7 +415,6 @@ int main(int argc, char** argv)
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-
         glTransformArrays(&trans, &shaderProgram);
 
         glCheckError();
@@ -411,37 +440,50 @@ int main(int argc, char** argv)
         glBindVertexArray(VAO);
 
         glCheckError();
-        for (int i = 0; i < rObjCount; ++i)
+        for (GameObject const &go: gObj)
         {
-            if (rObj[i].nodetype !=FbxNodeAttribute::eMesh) continue;
+            for (int i = 0; i < go.rObjCount; ++i)
+            {
+                if (go.rObjects[i].nodetype !=FbxNodeAttribute::eMesh) continue;
 
-            glBindBuffer(GL_ARRAY_BUFFER, VBO);
-            glBufferData(GL_ARRAY_BUFFER, rObj[i].verticies.size() * sizeof(float), &rObj[i].verticies[0], GL_STATIC_DRAW);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
-            glEnableVertexAttribArray(0);
+                glBindBuffer(GL_ARRAY_BUFFER, VBO);
+                glBufferData(GL_ARRAY_BUFFER, go.rObjects[i].verticies.size() * sizeof(float), &go.rObjects[i].verticies[0], GL_STATIC_DRAW);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
+                glEnableVertexAttribArray(0);
+                glCheckError();
 
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, rObj[i].vertIndices.size() * sizeof(unsigned int), &rObj[i].vertIndices[0], GL_STATIC_DRAW);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, go.rObjects[i].vertIndices.size() * sizeof(unsigned int), &go.rObjects[i].vertIndices[0], GL_STATIC_DRAW);
+                glCheckError();
 
-            glBindBuffer(GL_ARRAY_BUFFER, VBOMaterial);    
-            glBufferData(GL_ARRAY_BUFFER, (rObj[i].diffuse.size() + rObj[i].normal.size()) * sizeof(float)  , 0, GL_STATIC_DRAW);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, rObj[i].normal.size() * sizeof(float), &rObj[i].diffuse[0]);
-            glBufferSubData(GL_ARRAY_BUFFER, rObj[i].diffuse.size() * sizeof(float), rObj[i].normal.size() * sizeof(float), &rObj[i].normal[0]);
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
-            glEnableVertexAttribArray(1);
-            glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)(rObj[i].diffuse.size()*sizeof(float)));
-            glEnableVertexAttribArray(2);
-            
-            glDrawElements(GL_TRIANGLES, rObj[i].vertIndices.size(), GL_UNSIGNED_INT, 0);
-            //glDisableVertexAttribArray(0);
-            //glDisableVertexAttribArray(1);
+                glBindBuffer(GL_ARRAY_BUFFER, VBOMaterial);    
+                glBufferData(GL_ARRAY_BUFFER, (go.rObjects[i].diffuse.size() + go.rObjects[i].normal.size()) * sizeof(float)  , 0, GL_STATIC_DRAW);
+                glBufferSubData(GL_ARRAY_BUFFER, 0, go.rObjects[i].normal.size() * sizeof(float), &go.rObjects[i].diffuse[0]);
+                glBufferSubData(GL_ARRAY_BUFFER, go.rObjects[i].diffuse.size() * sizeof(float), go.rObjects[i].normal.size() * sizeof(float), &go.rObjects[i].normal[0]);
+                glCheckError();
+
+                glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)0);
+                glEnableVertexAttribArray(1);
+                glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (GLvoid*)(go.rObjects[i].diffuse.size()*sizeof(float)));
+                glEnableVertexAttribArray(2);
+                glCheckError();
+                
+                glDrawElements(GL_TRIANGLES, go.rObjects[i].vertIndices.size(), GL_UNSIGNED_INT, 0);
+                glCheckError();
+
+                glDisableVertexAttribArray(0);
+                glDisableVertexAttribArray(1);
+                glDisableVertexAttribArray(2);
+            }
         }
         glBindVertexArray(0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindTexture(GL_TEXTURE_2D, 0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
         ImGui::EndFrame();
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000/FPS));
+        //std::this_thread::sleep_for(std::chrono::milliseconds(1000/FPS));
     }
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
@@ -531,6 +573,23 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
     FbxMesh* mesh = node->GetMesh();
     std::cout << "mesh:" << mesh->GetName() << std::endl;
     std::cout << "layer:" << mesh->GetLayerCount() << std::endl;
+    for (unsigned int i = 0; i < node->GetMaterialCount(); ++i)
+    {
+        FbxSurfaceMaterial* material = node->GetMaterial(i);
+        FbxProperty prop = material->FindProperty(FbxSurfaceMaterial::sDiffuse);
+        if(prop.IsValid())
+        {
+            for(unsigned int t = 0; t < prop.GetSrcObjectCount<FbxFileTexture>();++t)
+            {
+                FbxFileTexture* texture = prop.GetSrcObject<FbxFileTexture>(i);
+                if (texture)
+                {
+                    std::cout << texture->GetFileName() << std::endl;
+                }
+            }
+        }
+
+    }
 
     for(int v = 0;v < mesh->GetControlPointsCount(); ++v)
     {
@@ -551,10 +610,56 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
     }
     std::cout << "mat Count" << mesh->GetElementMaterialCount() << std::endl;
 
+    for (int uv_index = 0; uv_index < mesh->GetElementUVCount(); ++uv_index)
+    {
+        FbxGeometryElementUV* leUv = mesh->GetElementUV(uv_index);
+        switch(leUv->GetMappingMode())
+        {
+            case fbxsdk::FbxLayerElement::eAllSame:
+                std::cout << "texture AllSame" << std::endl;
+            break;
+            case fbxsdk::FbxLayerElement::eByEdge:
+                std::cout << "texture Edge" << std::endl;
+            break;
+            case fbxsdk::FbxLayerElement::eByControlPoint:
+                std::cout << "texture ControlPoint" << std::endl;
+            break;
+            case fbxsdk::FbxLayerElement::eByPolygon:
+                std::cout << "texture Polygon" << std::endl;
+            break;
+            case fbxsdk::FbxLayerElement::eByPolygonVertex:
+            {
+                std::cout << "uv PolyVertex" << std::endl;
+                FbxVector2 uv_id;
+                switch(leUv->GetReferenceMode())
+                {
+                    case fbxsdk::FbxGeometryElement::eDirect:
+                        {
+                            std::cout << "eDirect" << std::endl;
+                            uv_id = leUv->GetDirectArray().GetAt(uv_index);
+                        }
+                    break;
+                    case fbxsdk::FbxGeometryElement::eIndexToDirect:
+                        {
+                            std::cout << "eIndexToDirect" << std::endl;
+                            int id = leUv->GetIndexArray().GetAt(uv_index);
+                            uv_id = leUv->GetDirectArray().GetAt(id);
+                        }
+                    break;
+                    default:
+                    break;
+                }
+            }
+            break;
+            case fbxsdk::FbxLayerElement::eNone:
+                std::cout << "texture None" << std::endl;
+            break;
+        }
+    }
+
     for (int m = 0; m < mesh->GetElementMaterialCount();++m)
     {
         FbxGeometryElementMaterial* lMaterialElement = mesh->GetElementMaterial(m);
-
         switch(lMaterialElement->GetMappingMode())
         {
             case fbxsdk::FbxLayerElement::EMappingMode::eAllSame:
@@ -631,7 +736,6 @@ void ImportMeshData(FbxNode *node, std::vector<renderObject>* renderList, int& i
             case fbxsdk::FbxLayerElement::EMappingMode::eNone:
                 break;
         }
-
     renderList->emplace_back(*rObj);
     }
 }

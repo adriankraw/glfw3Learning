@@ -25,5 +25,5 @@ void main()
     vec3 lightDir = normalize(lightPos - fragPos.xyz);
     float diff = max(dot(normal, lightDir), 0.0);
     vec3 color = vertexColor * (diff * lightColor);
-    FragColor = vec4(color, 1.0f);
+    FragColor = vec4(vertexColor, 1.0f);
 }
