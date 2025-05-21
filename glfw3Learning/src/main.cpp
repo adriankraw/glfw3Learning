@@ -93,6 +93,7 @@ public:
     glm::vec3 rotation;
     glm::vec3 scale;
     std::vector<renderObject> rObjects;
+    FbxScene* fbxScene;
     GameObject(int _renderOrder, glm::vec3 _trans, glm::vec3 _rot, glm::vec3 _scale) 
     {
         renderOrder = _renderOrder;
@@ -299,6 +300,7 @@ int main(int argc, char** argv)
 
     FbxScene *Groundscen = LoadFbxFile(*fbxGroundLocation);
     gObj.back().rObjCount = Groundscen->GetNodeCount();
+    gObj.back().fbxScene = Groundscen;
     std::cout << "NodeCount: " << gObj.back().rObjCount << std::endl;
     for (int i = 0; i < gObj.back().rObjCount; ++i)
     {
@@ -308,6 +310,7 @@ int main(int argc, char** argv)
     gObj.emplace_back(GameObject(1, glm::vec3(0,0,0), glm::vec3(0,0,0), glm::vec3(1,1,1)));
     FbxScene *scen = LoadFbxFile(*fbxFileLocation);
     gObj.back().rObjCount = scen->GetNodeCount();
+    gObj.back().fbxScene = scen;
     std::cout << "NodeCount: " << gObj.back().rObjCount << std::endl;
     for (int i = 0; i < gObj.back().rObjCount; ++i)
     {
@@ -356,22 +359,28 @@ int main(int argc, char** argv)
         float f = 0.0f;
         int counter = 0;
 
-        /*
+        
         if(imGuiWindowHierarchy)
         {
             //ImGui::SetNextWindowPos(ImVec2(0,0));
             //ImGui::SetNextWindowSizeConstraints(ImVec2(50.0f,400.f), ImVec2(-1,-1));
             ImGui::Begin("Hierarchy");                          
             ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-            if(ImGui::TreeNode("Hierarchy"))
+            for (unsigned int i = 0; i < gObj.size(); ++i)
             {
-                FbxNode *root = scen->GetRootNode();
-                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-                RenderImGuiNodeHierarchy(root);
-                ImGui::TreePop();
+                GameObject* go = &gObj[i];
+                std::string name = go->fbxScene->GetName();
+                name.append(" ");
+                name.append(std::to_string(i));
+                if(ImGui::TreeNode(name.c_str()))
+                {
+                    ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+                    RenderImGuiNodeHierarchy(go->fbxScene->GetRootNode());
+                    ImGui::TreePop();
+                }
             }
             ImGui::End();
-        }*/
+        }
         if(imGuiWindowTransform)
         {
             //ImGui::SetNextWindowPos(ImVec2(0,0));
