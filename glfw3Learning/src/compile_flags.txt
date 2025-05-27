@@ -1,4 +1,14 @@
 -xc++
 -I
 /usr/local/include
-./include
+-I 
+./../include
+-I
+/Applications/Autodesk/FBX SDK/2020.3.7/include
+-I
+./../extern/imgui
+.I
+./../include/stb
+-I
+/opt/Homebrew/opt/libiconv/include
+-L/usr/lib

@@ -35,6 +35,7 @@ set(IMGUI
         extern/imgui/imgui_widgets.cpp
         extern/imgui/imgui_demo.cpp
 )
+set(STB include/stb/stb_image.h)
 
 add_library(libz STATIC IMPORTED)
 set_target_properties(libz PROPERTIES
@@ -48,7 +49,7 @@ set_target_properties(fbxsdk PROPERTIES
 	INTERFACE_INCLUDE_DIRECTORIES "${pubApp}/Autodesk/FBX SDK/2020.3.7/include"
 )
 
-add_executable(glfw3Learning ./src/main.cpp ${IMGUI})
+add_executable(glfw3Learning ./src/main.cpp ${IMGUI} ${STB})
 
 set_property(TARGET glfw3Learning PROPERTY CXX_STANDARD 17)
 
@@ -58,6 +59,7 @@ target_include_directories(glfw3Learning PRIVATE ./include)
 target_include_directories(glfw3Learning PRIVATE ${pubApp}/Autodesk/FBX\ SDK/2020.3.7/include)
 target_include_directories(glfw3Learning PRIVATE ${Homebrew}/libxml2/include)
 target_include_directories(glfw3Learning PRIVATE ./extern/imgui)
+target_include_directories(glfw3Learning PRIVATE ./extern/stb)
 #target_include_directories(glfw3Learning PRIVATE ${pubinclude}/include/glfw)
 
 
